@@ -393,6 +393,7 @@ class StreamAggregator:
         """
         now = time.time()
         return {
+            "type": "telemetry_snapshot",
             "timestamp": now,
             "server_time_iso": datetime.now(timezone.utc).isoformat(),
             "service_status": dict(self.service_status),

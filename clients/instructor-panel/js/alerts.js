@@ -6,6 +6,7 @@
 class AlertsAndScoringManager {
   constructor() {
     this.banner = document.getElementById('annunciator-banner');
+    this.toastContainer = document.getElementById('hud-alerts-column');
     this.reportCardModal = document.getElementById('landing-report-modal');
     
     // Stabilized approach elements
@@ -14,15 +15,109 @@ class AlertsAndScoringManager {
     this.locIndicator = document.getElementById('ils-loc-dots');
 
     // State
+    this.scoringEnabled = false; // ТИМЧАСОВО ВІДКЛЮЧЕНО ОЦІНЮВАННЯ НА ПРОХАННЯ КОРИСТУВАЧА
+    this.toasts = new Map(); // warningKey -> DOM toast element
+    this.dismissedWarnings = new Set();
     this.activeWarnings = new Set();
+    this.normalToast = null;
     this.lastTouchdownState = false;
     this.landingReportData = null;
     this.wasAirborne = false;
+
+    // Примусово закриваємо модалку оцінювання
+    if (this.reportCardModal) {
+      this.reportCardModal.classList.add('hidden');
+    }
+
+    // Ensure floating toast column container exists in DOM (auto-inject if missing)
+    if (!this.toastContainer) {
+      this.toastContainer = document.createElement('div');
+      this.toastContainer.id = 'hud-alerts-column';
+      this.toastContainer.className = 'hud-alerts-column';
+      document.body.appendChild(this.toastContainer);
+    }
+
+    if (this.banner) {
+      this.banner.addEventListener('click', () => {
+        this.togglePopup();
+      });
+    }
+
+    window.alertsManager = this;
+  }
+
+  togglePopup() {
+    if (this.activeWarnings.size > 0) {
+      // If any warnings were dismissed, un-dismiss and show them again
+      if (this.dismissedWarnings.size > 0) {
+        this.dismissedWarnings.clear();
+        this.renderWarnings([...this.activeWarnings]);
+      } else {
+        // Toggle: dismiss all currently shown toasts
+        for (const warn of this.toasts.keys()) {
+          this.dismissToast(warn);
+        }
+      }
+    } else {
+      // When systems are normal, show a brief green confirmation toast sliding from the right
+      this.showNormalToast();
+    }
+  }
+
+  showNormalToast() {
+    if (this.normalToast) {
+      this.normalToast.remove();
+      this.normalToast = null;
+    }
+    const toast = document.createElement('div');
+    toast.className = 'hud-alert-toast normal toast-entering';
+    toast.setAttribute('role', 'status');
+    toast.innerHTML = `
+      <span class="warn-badge warn-badge-green">СИСТЕМИ В НОРМІ &bull; ПАРАМЕТРИ В МЕЖАХ ДОПУСКУ</span>
+      <button class="hud-alert-close" title="Сховати">&times;</button>
+    `;
+
+    const closeBtn = toast.querySelector('.hud-alert-close');
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toast.classList.add('toast-exiting');
+      setTimeout(() => toast.remove(), 350);
+    });
+
+    this.toastContainer.appendChild(toast);
+    this.normalToast = toast;
+
+    // Light animation: enter from right
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        toast.classList.remove('toast-entering');
+      });
+    });
+
+    // Auto-dismiss smoothly to right after 3.2s
+    setTimeout(() => {
+      if (toast.parentNode && !toast.classList.contains('toast-exiting')) {
+        toast.classList.add('toast-exiting');
+        setTimeout(() => toast.remove(), 350);
+      }
+    }, 3200);
+  }
+
+  dismissToast(warn) {
+    this.dismissedWarnings.add(warn);
+    const toast = this.toasts.get(warn);
+    if (toast) {
+      toast.classList.add('toast-exiting');
+      setTimeout(() => {
+        toast.remove();
+        this.toasts.delete(warn);
+      }, 350);
+    }
   }
 
   update(analytics, telemetry, isOnline) {
     if (!isOnline) {
-      this.clearAllWarnings();
+      this.showOfflineState();
       if (this.approachBadge) {
         this.approachBadge.className = 'status-pill status-offline';
         this.approachBadge.innerText = 'APPROACH: NO DATA';
@@ -30,10 +125,17 @@ class AlertsAndScoringManager {
       return;
     }
 
-    // 1. Process AI Warnings from Analytics Service
+    // 1. Process AI Warnings from Analytics Service and Telemetry Errors (Strictly Real Data, Zero Mock)
     const warningsList = analytics?.warnings?.active_warnings || 
       (Array.isArray(analytics?.warnings) ? analytics.warnings : []);
-    this.renderWarnings(warningsList);
+    
+    const telemetryErrors = telemetry?.status?.errors || [];
+    const combinedAlerts = [...warningsList];
+    telemetryErrors.forEach(err => {
+      if (!combinedAlerts.includes(err)) combinedAlerts.push(err);
+    });
+
+    this.renderWarnings(combinedAlerts);
 
     // 2. Process Stabilized Approach Status
     this.updateStabilizedApproach(analytics, telemetry);
@@ -43,43 +145,127 @@ class AlertsAndScoringManager {
   }
 
   renderWarnings(warningsList) {
-    if (!this.banner) return;
+    if (!warningsList || warningsList.length === 0) {
+      // Smoothly dismiss all active toasts to the right
+      for (const [warn, toast] of this.toasts.entries()) {
+        toast.classList.add('toast-exiting');
+        setTimeout(() => toast.remove(), 350);
+      }
+      this.toasts.clear();
+      this.activeWarnings.clear();
+      this.dismissedWarnings.clear();
 
-    if (warningsList.length === 0) {
-      this.banner.innerHTML = '<span class="annunciator-normal">SYSTEMS NORMAL</span>';
-      this.banner.className = 'annunciator-container normal';
+      if (this.banner) {
+        this.banner.innerHTML = '<span class="annunciator-normal">SYSTEMS NORMAL</span>';
+        this.banner.className = 'annunciator-container normal';
+        this.banner.title = 'Всі системи в нормі. Клацніть для перегляду статусу';
+      }
       return;
     }
 
-    // Has active warnings
-    let html = '';
-    let isMasterWarning = false;
+    // Determine Master Warning
+    const isMasterWarning = warningsList.some(warn => 
+      ['PULL UP', 'STALL', 'OVERSPEED', 'TERRAIN', 'UNSTABILIZED', 'FAIL', 'ERROR', 'CRASH', 'OFFLINE']
+      .some(w => String(warn).toUpperCase().includes(w))
+    );
 
+    // 1. Update Compact Header Annunciator (Aviation Master Warning / Master Caution)
+    if (this.banner) {
+      const typeLabel = isMasterWarning ? 'УВАГА' : 'ПОПЕРЕДЖЕННЯ';
+      const count = warningsList.length;
+      const countLabel = `${typeLabel}: ${count}`;
+      this.banner.innerHTML = `<span class="header-warn-summary">${countLabel}</span>`;
+      this.banner.className = `annunciator-container ${isMasterWarning ? 'master-warning' : 'master-caution'}`;
+      this.banner.title = `Активно ${count} попереджень. Клацніть, щоб перемкнути відображення`;
+    }
+
+    // 2. Remove obsolete toasts with light slide-out animation to the right
+    for (const [warn, toast] of this.toasts.entries()) {
+      if (!warningsList.includes(warn)) {
+        toast.classList.add('toast-exiting');
+        setTimeout(() => toast.remove(), 350);
+        this.toasts.delete(warn);
+        this.dismissedWarnings.delete(warn);
+      }
+    }
+
+    // 3. Add or update toast rows in the column stack
     warningsList.forEach(warn => {
-      const isRed = ['PULL UP', 'STALL', 'OVERSPEED', 'TERRAIN', 'UNSTABILIZED'].some(w => warn.toUpperCase().includes(w));
-      if (isRed) isMasterWarning = true;
-      const cssClass = isRed ? 'warn-badge-red' : 'warn-badge-amber';
-      html += `<span class="warn-badge ${cssClass}">${warn}</span>`;
-
-      // Play audio chime if new warning
+      // If warning has re-triggered as a new state, allow it to reappear
       if (!this.activeWarnings.has(warn)) {
-        if (window.cockpitAudio) {
-          window.cockpitAudio.playAlert(isRed ? 'warning' : 'caution');
+        this.dismissedWarnings.delete(warn);
+      }
+
+      if (this.dismissedWarnings.has(warn)) return;
+
+      if (!this.toasts.has(warn)) {
+        const upper = String(warn).toUpperCase();
+        const isRed = ['PULL UP', 'STALL', 'OVERSPEED', 'TERRAIN', 'UNSTABILIZED', 'FAIL', 'ERROR', 'CRASH', 'OFFLINE'].some(w => upper.includes(w));
+        const cssClass = isRed ? 'warn-badge-red' : 'warn-badge-amber';
+        const cardType = isRed ? 'master-warning' : 'master-caution';
+
+        const toast = document.createElement('div');
+        toast.className = `hud-alert-toast ${cardType} toast-entering`;
+        toast.setAttribute('role', 'alert');
+        toast.innerHTML = `
+          <span class="warn-badge ${cssClass}">${warn}</span>
+          <button class="hud-alert-close" title="Сховати">&times;</button>
+        `;
+
+        const closeBtn = toast.querySelector('.hud-alert-close');
+        closeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.dismissToast(warn);
+        });
+
+        this.toastContainer.appendChild(toast);
+        this.toasts.set(warn, toast);
+
+        // Light animation: enter from right
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            toast.classList.remove('toast-entering');
+          });
+        });
+
+        // Play audio chime if new warning
+        if (!this.activeWarnings.has(warn)) {
+          if (window.cockpitAudio) {
+            window.cockpitAudio.playAlert(isRed ? 'warning' : 'caution');
+          }
         }
       }
     });
 
     this.activeWarnings = new Set(warningsList);
-    this.banner.innerHTML = html;
-    this.banner.className = `annunciator-container ${isMasterWarning ? 'master-warning' : 'master-caution'}`;
   }
 
-  clearAllWarnings() {
+  showOfflineState() {
+    for (const [warn, toast] of this.toasts.entries()) {
+      toast.classList.add('toast-exiting');
+      setTimeout(() => toast.remove(), 350);
+    }
+    this.toasts.clear();
     this.activeWarnings.clear();
+    this.dismissedWarnings.clear();
+
     if (this.banner) {
       this.banner.innerHTML = '<span class="annunciator-offline">OFFLINE</span>';
       this.banner.className = 'annunciator-container offline';
+      this.banner.title = 'Немає зв\'язку з сервером телеметрії';
     }
+  }
+
+  clearAllWarnings() {
+    this.showOfflineState();
+    if (this.banner) {
+      this.banner.innerHTML = '<span class="annunciator-normal">SYSTEMS NORMAL</span>';
+      this.banner.className = 'annunciator-container normal';
+    }
+  }
+
+  resetToOffline() {
+    this.showOfflineState();
   }
 
   updateStabilizedApproach(analytics, telemetry) {
@@ -135,6 +321,7 @@ class AlertsAndScoringManager {
   }
 
   evaluateTouchdown(analytics, telemetry) {
+    if (!this.scoringEnabled) return;
     if (!telemetry) return;
 
     // Direct report from analytics service
@@ -218,6 +405,7 @@ class AlertsAndScoringManager {
   }
 
   showLandingReport(report) {
+    if (!this.scoringEnabled) return;
     this.landingReportData = report;
     if (!this.reportCardModal) return;
 

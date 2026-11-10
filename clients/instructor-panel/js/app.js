@@ -36,6 +36,9 @@ class InstructorPanelApp {
         airspeedId: 'gauge-airspeed-dash',
         attitudeId: 'gauge-attitude-dash',
         altimeterId: 'gauge-altimeter-dash',
+        turnCoordinatorId: 'gauge-turn-dash',
+        headingId: 'gauge-heading-dash',
+        vsiId: 'gauge-vsi-dash',
       });
     } else {
       this.standby = null;
@@ -53,6 +56,9 @@ class InstructorPanelApp {
 
     // Session start time
     this.sessionStartTime = Date.now();
+    this.activeView = 'all'; // Default view: all 4 panels
+    this.lastPayload = null; // Cached last telemetry payload for instant view transitions
+    window.app = this;
 
     // Bind event listeners
     this.bindEvents();
@@ -133,20 +139,141 @@ class InstructorPanelApp {
         if (popoutEis) popoutEis.classList.add('hidden');
         if (this.standby) {
           setTimeout(() => {
-            this.standby.airspeedGauge.resize();
-            this.standby.attitudeGauge.resize();
-            this.standby.altimeterGauge.resize();
+            this.standby.resize();
           }, 30);
         }
       });
     }
 
-    // Handle view mode query param (?view=pfd or ?view=nd)
-    const urlParams = new URLSearchParams(window.location.search);
-    const viewMode = urlParams.get('view');
-    if (viewMode) {
-      document.body.classList.add(`mode-${viewMode}`);
+    // Global SPA Navigation Tabs & Section Switchers
+    document.querySelectorAll('.nav-tab-btn, .btn-switch-view').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const view = btn.dataset.view;
+        if (view) this.setView(view);
+      });
+    });
+
+    // Header Fullscreen Button
+    const btnHdrFs = document.getElementById('btn-header-fullscreen');
+    if (btnHdrFs) {
+      btnHdrFs.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(err => console.warn(err));
+        } else {
+          document.exitFullscreen().catch(err => console.warn(err));
+        }
+      });
     }
+
+    // Listen to hashchange for seamless browser history support without page refresh
+    window.addEventListener('hashchange', () => {
+      const hashView = (location.hash || '#all').replace('#', '');
+      if (hashView && hashView !== this.activeView) {
+        this.setView(hashView);
+      }
+    });
+
+    // Responsive window resize & mobile/tablet orientation change handlers
+    this._resizeDebounceTimer = null;
+    window.addEventListener('resize', () => {
+      clearTimeout(this._resizeDebounceTimer);
+      this._resizeDebounceTimer = setTimeout(() => this.handleResize(), 80);
+    });
+
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => this.handleResize(), 150);
+    });
+
+    // Initialize active view from hash or query param (default 'all')
+    const urlParams = new URLSearchParams(window.location.search);
+    const viewParam = urlParams.get('view');
+    const hashParam = (location.hash || '').replace('#', '');
+    const initialView = viewParam || hashParam || 'all';
+    this.setView(initialView);
+  }
+
+  handleResize() {
+    requestAnimationFrame(() => {
+      if (this.activeView === 'pfd' || this.activeView === 'all') {
+        if (this.pfd) this.pfd.resize();
+      }
+      if (this.activeView === 'nd' || this.activeView === 'all') {
+        if (this.nd && this.nd.map) {
+          this.nd.map.invalidateSize();
+        }
+      }
+      if (this.activeView === 'standby' || this.activeView === 'all') {
+        if (this.standby) {
+          this.standby.resize();
+        }
+      }
+    });
+  }
+
+  setView(viewName) {
+    const validViews = ['all', 'pfd', 'nd', 'standby', 'engine', 'safety'];
+    if (!validViews.includes(viewName)) viewName = 'all';
+
+    this.activeView = viewName;
+
+    // 1. Highlight active navigation tab in fixed header
+    document.querySelectorAll('.nav-tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === viewName);
+    });
+
+    // 2. Set body mode class for full-screen view layout
+    validViews.forEach(v => document.body.classList.remove(`mode-${v}`));
+    document.body.classList.add(`mode-${viewName}`);
+
+    // 3. For engine / standby sub-views inside card-engine
+    const viewEis = document.getElementById('view-eis');
+    const viewStandby = document.getElementById('view-standby');
+    const tabBtnEis = document.getElementById('tab-btn-eis');
+    const tabBtnStandby = document.getElementById('tab-btn-standby');
+
+    if (viewName === 'standby') {
+      if (viewEis) viewEis.classList.add('hidden');
+      if (viewStandby) viewStandby.classList.remove('hidden');
+      if (tabBtnEis) tabBtnEis.classList.remove('active');
+      if (tabBtnStandby) tabBtnStandby.classList.add('active');
+    } else if (viewName === 'engine') {
+      if (viewEis) viewEis.classList.remove('hidden');
+      if (viewStandby) viewStandby.classList.add('hidden');
+      if (tabBtnEis) tabBtnEis.classList.add('active');
+      if (tabBtnStandby) tabBtnStandby.classList.remove('active');
+    }
+
+    // 4. Force resize on active canvas or Leaflet map so it fills available screen immediately
+    this.handleResize();
+
+    // 5. Instantly render latest telemetry onto the newly visible section
+    if (this.lastPayload) {
+      const isTelemetryOnline = this.serviceStatus.telemetry === 'ONLINE';
+      const isVisionOnline = this.serviceStatus.vision === 'ONLINE';
+      if (viewName === 'pfd' || viewName === 'all') {
+        this.pfd.update(this.lastPayload.telemetry, isTelemetryOnline);
+      }
+      if (viewName === 'nd' || viewName === 'all') {
+        this.nd.update(this.lastPayload.telemetry, isTelemetryOnline);
+      }
+      if (viewName === 'standby' || viewName === 'all') {
+        if (this.standby) this.standby.update(this.lastPayload.telemetry, isTelemetryOnline);
+      }
+      if (viewName === 'engine' || viewName === 'all') {
+        this.engine.update(this.lastPayload.telemetry, isTelemetryOnline);
+      }
+      if (viewName === 'safety' || viewName === 'all') {
+        this.updateVisionHUD(this.lastPayload.vision, isVisionOnline);
+      }
+    }
+
+    // 6. Update URL hash without reloading page
+    try {
+      if (location.hash.replace('#', '') !== viewName) {
+        history.replaceState(null, '', `#${viewName}`);
+      }
+    } catch (e) {}
   }
 
   connect() {
@@ -246,6 +373,9 @@ class InstructorPanelApp {
       }
     }
 
+    // Cache latest payload for fast transitions
+    this.lastPayload = payload;
+
     // Update Service Statuses
     if (payload.service_status) {
       this.serviceStatus = payload.service_status;
@@ -256,25 +386,37 @@ class InstructorPanelApp {
     const isVisionOnline = this.serviceStatus.vision === 'ONLINE';
     const isAnalyticsOnline = this.serviceStatus.analytics === 'ONLINE';
 
-    // 1. Dispatch Telemetry to PFD
-    this.pfd.update(payload.telemetry, isTelemetryOnline);
-
-    // 2. Dispatch Telemetry to ND Map
-    this.nd.update(payload.telemetry, isTelemetryOnline);
-
-    // 3. Dispatch Telemetry to Engine Indication System
-    this.engine.update(payload.telemetry, isTelemetryOnline);
-
-    // 3b. Dispatch Telemetry to Standby Backup Cluster
-    if (this.standby) {
-      this.standby.update(payload.telemetry, isTelemetryOnline);
-    }
-
-    // 4. Dispatch to AI Warnings & Landing Evaluator
+    // Master Warning / Caution & Annunciator Bar always updates
     this.alerts.update(payload.analytics, payload.telemetry, isAnalyticsOnline);
 
-    // 5. Update Vision HUD Panel
-    this.updateVisionHUD(payload.vision, isVisionOnline);
+    // RESOURCE OPTIMIZATION (Економія ресурсів):
+    // Only execute heavy DOM, Canvas, and Leaflet redraws for the ACTIVE section!
+    const active = this.activeView;
+
+    if (active === 'all') {
+      this.pfd.update(payload.telemetry, isTelemetryOnline);
+      this.nd.update(payload.telemetry, isTelemetryOnline);
+
+      const viewStandby = document.getElementById('view-standby');
+      const isStandbyActive = viewStandby && !viewStandby.classList.contains('hidden');
+      if (isStandbyActive) {
+        if (this.standby) this.standby.update(payload.telemetry, isTelemetryOnline);
+      } else {
+        this.engine.update(payload.telemetry, isTelemetryOnline);
+      }
+
+      this.updateVisionHUD(payload.vision, isVisionOnline);
+    } else if (active === 'pfd') {
+      this.pfd.update(payload.telemetry, isTelemetryOnline);
+    } else if (active === 'nd') {
+      this.nd.update(payload.telemetry, isTelemetryOnline);
+    } else if (active === 'standby') {
+      if (this.standby) this.standby.update(payload.telemetry, isTelemetryOnline);
+    } else if (active === 'engine') {
+      this.engine.update(payload.telemetry, isTelemetryOnline);
+    } else if (active === 'safety') {
+      this.updateVisionHUD(payload.vision, isVisionOnline);
+    }
   }
 
   updateServicePills() {

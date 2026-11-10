@@ -36,73 +36,142 @@ body {
   color: var(--text-main);
   font-family: var(--font-sans);
   height: 100vh;
+  height: 100dvh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   user-select: none;
 }
 
-/* ================= HEADER BAR ================= */
-header.ios-header {
+/* ================= HEADER BAR (FIXED HEIGHT, NON-FLOATING) ================= */
+header.ios-header, .standalone-header {
+  height: 56px !important;
+  min-height: 56px !important;
+  max-height: 56px !important;
+  padding: 0 10px !important;
+  box-sizing: border-box !important;
   background-color: var(--bg-secondary);
   border-bottom: 2px solid var(--bg-card-border);
-  padding: 8px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 58px;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px;
+  position: sticky !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
   z-index: 1000;
+  flex-shrink: 0 !important;
+  overflow: hidden;
 }
 
 .brand-section {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  justify-content: center;
+  min-width: 0;
+  flex-shrink: 0;
 }
 
 .brand-title {
-  font-size: 1.05rem;
+  font-size: 0.88rem;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   color: var(--avionics-cyan);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .brand-subtitle {
-  font-size: 0.75rem;
+  font-size: 0.64rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
-/* Center Annunciator Banner */
-.annunciator-section {
-  flex: 1;
+/* Center Navigation Softkey Bar (Aeronautical, Engineering Standard) */
+.nav-section-tabs {
   display: flex;
+  align-items: center;
+  gap: 2px;
+  background: #060b14;
+  border: 1px solid #1a2a44;
+  border-radius: 4px;
+  padding: 2px 3px;
+  flex-shrink: 1;
+}
+
+.nav-tab-btn {
+  background: #0a111e;
+  border: 1px solid #16243a;
+  color: #7d90a6;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.nav-tab-btn:hover {
+  color: #e2e8f0;
+  background: #111d30;
+  border-color: #243550;
+}
+
+.nav-tab-btn.active {
+  background: #0284c7;
+  border-color: #38bdf8;
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 0 10px rgba(2, 132, 199, 0.4);
+}
+
+/* Center Annunciator Header Badge */
+.annunciator-section {
+  display: flex;
+  align-items: center;
   justify-content: center;
-  max-width: 480px;
+  flex-shrink: 0;
 }
 
 .annunciator-container {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 16px;
+  padding: 6px 14px;
   border-radius: 6px;
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  cursor: pointer;
   transition: all 0.2s ease;
+  user-select: none;
+  white-space: nowrap;
 }
 
 .annunciator-container.normal {
   background: #0f2027;
   border: 1px solid #1a3c40;
   color: var(--avionics-green);
+}
+.annunciator-container.normal:hover {
+  background: #142a33;
+  border-color: #22c55e;
 }
 
 .annunciator-container.master-warning {
@@ -151,34 +220,180 @@ header.ios-header {
   to { box-shadow: 0 0 14px var(--avionics-amber); }
 }
 
-/* System Stats & Service Pills */
+/* ================= FLOATING HUD ALERT TOAST COLUMN (TOP-RIGHT) ================= */
+.hud-alerts-column {
+  position: fixed;
+  top: 60px;
+  right: 10px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+  max-width: 260px;
+  max-height: calc(100vh - 75px);
+  overflow-y: visible;
+}
+
+.hud-alert-toast {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  background: rgba(8, 14, 24, 0.98);
+  border: 1px solid #1a2a44;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.85);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.25s ease,
+              margin-bottom 0.25s ease;
+  transform: translateX(0);
+  opacity: 1;
+  max-width: 260px;
+  white-space: nowrap;
+}
+
+/* Light / smooth slide-in from right */
+.hud-alert-toast.toast-entering {
+  transform: translateX(120%);
+  opacity: 0;
+}
+
+/* Light / smooth slide-out to right */
+.hud-alert-toast.toast-exiting {
+  transform: translateX(120%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Master Warning (Red Alerts) */
+.hud-alert-toast.master-warning {
+  border: 1px solid #ef4444;
+  background: rgba(24, 10, 14, 0.98);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.85), 0 0 14px rgba(239, 68, 68, 0.6);
+  animation: pulse-red-popup 0.85s infinite alternate;
+}
+
+@keyframes pulse-red-popup {
+  from {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7), 0 0 10px rgba(239, 68, 68, 0.5);
+  }
+  to {
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.9), 0 0 20px rgba(239, 68, 68, 0.9);
+  }
+}
+
+/* Master Caution (Amber Alerts) */
+.hud-alert-toast.master-caution {
+  border: 1px solid #f59e0b;
+  background: rgba(28, 18, 10, 0.98);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.85), 0 0 14px rgba(245, 158, 11, 0.6);
+  animation: pulse-amber-popup 1.05s infinite alternate;
+}
+
+@keyframes pulse-amber-popup {
+  from {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7), 0 0 10px rgba(245, 158, 11, 0.5);
+  }
+  to {
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.9), 0 0 20px rgba(245, 158, 11, 0.9);
+  }
+}
+
+/* Normal Toast (Green) */
+.hud-alert-toast.normal {
+  border: 1px solid #22c55e;
+  background: rgba(10, 24, 16, 0.98);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.75), 0 0 12px rgba(34, 197, 94, 0.5);
+}
+
+.hud-alert-toast .warn-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.hud-alert-toast .warn-badge-red {
+  background-color: #ef4444;
+  color: #ffffff;
+  border: 1px solid #f87171;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.hud-alert-toast .warn-badge-amber {
+  background-color: #f59e0b;
+  color: #000000;
+  border: 1px solid #fbbf24;
+}
+
+.hud-alert-toast .warn-badge-green {
+  background-color: #22c55e;
+  color: #000000;
+  border: 1px solid #86efac;
+}
+
+.hud-alert-toast .hud-alert-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hud-alert-toast .hud-alert-close:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* System Stats & Service Pills (Fixed Right in Header, Never Truncated) */
 .stats-section {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .status-badge {
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 0.75rem;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 0.72rem;
   font-weight: 700;
   font-family: var(--font-mono);
   color: #000000;
+  white-space: nowrap;
 }
 
 .service-pills-group {
   display: flex;
-  gap: 6px;
+  gap: 4px;
 }
 
 .service-pill {
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 0.72rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.68rem;
   font-family: var(--font-mono);
   font-weight: 600;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .service-pill.online {
@@ -196,11 +411,12 @@ header.ios-header {
 .metric-pill {
   background-color: var(--bg-card);
   border: 1px solid var(--bg-card-border);
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 0.75rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.7rem;
   font-family: var(--font-mono);
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .metric-pill span {
@@ -213,8 +429,9 @@ header.ios-header {
   flex-direction: column;
   align-items: flex-end;
   font-family: var(--font-mono);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   color: var(--text-main);
+  white-space: nowrap;
 }
 
 .clock-group .session-time {
@@ -417,10 +634,10 @@ main.dashboard-grid {
 }
 
 .gauge-card {
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--bg-card-border);
-  border-radius: 6px;
-  padding: 8px;
+  background-color: #080e18;
+  border: 1px solid #1a2a44;
+  border-radius: 4px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -431,25 +648,39 @@ main.dashboard-grid {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 4px;
+  min-height: 24px;
 }
 
 .gauge-title {
-  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
   font-weight: 700;
-  color: var(--text-muted);
+  color: #8da4be;
   letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .gauge-value {
   font-family: var(--font-mono);
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: 1.02rem;
+  font-weight: 800;
   color: var(--avionics-cyan);
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-align: right;
 }
 
 .gauge-bar-track {
-  background-color: #0b111e;
-  border: 1px solid #1e293b;
+  container-type: inline-size;
+  position: relative;
+  background-color: #060b14;
+  /* Reference scale gradient: green -> orange -> red */
+  background-image: linear-gradient(90deg, rgba(34, 197, 94, 0.16) 0%, rgba(245, 158, 11, 0.16) 55%, rgba(239, 68, 68, 0.22) 100%);
+  border: 1px solid #1a2a44;
   border-radius: 3px;
   height: 8px;
   overflow: hidden;
@@ -459,8 +690,69 @@ main.dashboard-grid {
 .gauge-bar-fill {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, #22c55e, #38bdf8);
-  transition: width 0.1s linear;
+  /* Progress fill: green -> orange -> red gradient anchored to scale */
+  background: linear-gradient(90deg, #22c55e 0%, #84cc16 35%, #f59e0b 65%, #ef4444 100%);
+  background-size: 100cqw 100%;
+  background-repeat: no-repeat;
+  border-radius: 2px;
+  transition: width 0.15s ease-out;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.25);
+}
+
+/* Inverted Scale: Red (Low/Empty/Danger) -> Orange (Caution) -> Green (Full/Safe) */
+/* Specially for Fuel Quantity & Oil Pressure */
+.gauge-bar-track.scale-inverted {
+  background-image: linear-gradient(90deg, rgba(239, 68, 68, 0.25) 0%, rgba(245, 158, 11, 0.16) 35%, rgba(34, 197, 94, 0.18) 100%);
+}
+
+.gauge-bar-track.scale-inverted .gauge-bar-fill {
+  background: linear-gradient(90deg, #ef4444 0%, #f59e0b 30%, #84cc16 60%, #22c55e 100%);
+  background-size: 100cqw 100%;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.25);
+}
+
+/* Neutral Scale: Clean Avionics Cyan for Control Surfaces (Throttle, Flaps, Elevator) */
+.gauge-bar-track.scale-controls {
+  background-image: none;
+  background-color: #070d18;
+  border-color: #1a2a44;
+}
+
+.gauge-bar-track.scale-controls .gauge-bar-fill {
+  background: linear-gradient(90deg, #0284c7 0%, #38bdf8 100%);
+  background-size: auto;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.35);
+}
+
+/* Bipolar Center-Zero Control: Elevator Stick (-100% to +100%) */
+.gauge-bar-track.scale-bipolar {
+  position: relative;
+  background-image: none;
+  background-color: #070d18;
+  border-color: #1a2a44;
+}
+
+.gauge-bar-track.scale-bipolar::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #64748b;
+  z-index: 2;
+  transform: translateX(-50%);
+}
+
+.gauge-bar-track.scale-bipolar .gauge-bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #0284c7 0%, #38bdf8 100%);
+  background-size: auto;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.4);
+  transition: left 0.12s ease-out, width 0.12s ease-out;
 }
 
 /* NO DATA ERROR BADGE */
@@ -729,24 +1021,125 @@ main.dashboard-grid {
   display: none !important;
 }
 
-/* TABLET FULLSCREEN VIEW MODES */
-body.mode-pfd main.dashboard-grid {
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
+/* Temporarily disabled touchdown score modal as requested */
+#landing-report-modal {
+  display: none !important;
 }
-body.mode-pfd .panel-card:not(:nth-child(1)) { display: none; }
 
-body.mode-nd main.dashboard-grid {
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
+/* ================= SINGLE-PAGE APPLICATION (SPA) VIEW MODES ================= */
+body.mode-all main.dashboard-grid {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
 }
-body.mode-nd .panel-card:not(:nth-child(2)) { display: none; }
 
-body.mode-engine main.dashboard-grid {
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
+body.mode-pfd main.dashboard-grid,
+body.mode-nd main.dashboard-grid,
+body.mode-standby main.dashboard-grid,
+body.mode-engine main.dashboard-grid,
+body.mode-safety main.dashboard-grid {
+  grid-template-columns: 1fr !important;
+  grid-template-rows: 1fr !important;
+  padding: 8px;
 }
-body.mode-engine .panel-card:not(:nth-child(3)) { display: none; }
+
+/* Hide other panels when in single-panel mode */
+body.mode-pfd #card-nd,
+body.mode-pfd #card-engine,
+body.mode-pfd #card-analysis {
+  display: none !important;
+}
+body.mode-pfd #card-pfd {
+  height: 100%;
+}
+
+body.mode-nd #card-pfd,
+body.mode-nd #card-engine,
+body.mode-nd #card-analysis {
+  display: none !important;
+}
+body.mode-nd #card-nd {
+  height: 100%;
+}
+
+body.mode-standby #card-pfd,
+body.mode-standby #card-nd,
+body.mode-standby #card-analysis {
+  display: none !important;
+}
+body.mode-standby #card-engine {
+  display: flex !important;
+  flex-direction: column;
+  height: 100%;
+}
+body.mode-standby #view-eis {
+  display: none !important;
+}
+body.mode-standby #view-standby {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  grid-template-rows: repeat(2, 1fr) !important;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  padding: 16px 24px;
+  gap: 16px 24px;
+  background: radial-gradient(circle at center, #1e242d 0%, #090c10 100%);
+  box-sizing: border-box;
+}
+body.mode-standby .standby-gauge-box {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  flex: 1;
+}
+body.mode-standby .standby-gauge-box canvas {
+  width: 100%;
+  height: calc(100% - 20px);
+  max-height: 280px;
+}
+body.mode-standby .standby-gauge-label {
+  font-size: 0.78rem;
+  margin-top: 4px;
+}
+
+body.mode-engine #card-pfd,
+body.mode-engine #card-nd,
+body.mode-engine #card-analysis {
+  display: none !important;
+}
+body.mode-engine #card-engine {
+  display: flex !important;
+  flex-direction: column;
+  height: 100%;
+}
+body.mode-engine #view-standby {
+  display: none !important;
+}
+body.mode-engine #view-eis {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  height: 100%;
+  gap: 12px;
+}
+
+body.mode-safety #card-pfd,
+body.mode-safety #card-nd,
+body.mode-safety #card-engine {
+  display: none !important;
+}
+body.mode-safety #card-analysis {
+  display: flex !important;
+  flex-direction: column;
+  height: 100%;
+}
+body.mode-safety .analysis-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 100%;
+  gap: 16px;
+}
 
 /* ================= MULTI-WINDOW / MULTI-MONITOR NAVIGATION ================= */
 .nav-multi-window {
@@ -813,46 +1206,48 @@ body.mode-engine .panel-card:not(:nth-child(3)) { display: none; }
   color: #000000;
 }
 
-/* ================= STANDBY ANALOG STEAM GAUGES ================= */
+/* ================= STANDBY ANALOG STEAM GAUGES (BASIC SIX / SIX-PACK) ================= */
 .standby-cluster-container {
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
   width: 100%;
   height: 100%;
-  padding: 8px;
+  padding: 6px 10px;
   background: linear-gradient(180deg, #181d24 0%, #0d1015 100%);
   border-radius: 4px;
-  gap: 8px;
+  gap: 6px 12px;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .standby-gauge-box {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  width: 100%;
   height: 100%;
-  max-width: 320px;
+  min-height: 0;
   position: relative;
 }
 
 .standby-gauge-box canvas {
   width: 100%;
-  height: 100%;
-  max-height: 280px;
+  height: calc(100% - 16px);
+  max-height: 150px;
   display: block;
 }
 
 .standby-gauge-label {
   font-family: var(--font-mono);
-  font-size: 0.70rem;
+  font-size: 0.64rem;
   font-weight: 700;
   color: var(--text-muted);
   text-align: center;
-  margin-top: 4px;
-  letter-spacing: 0.05em;
+  margin-top: 2px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 /* ================= STANDALONE FULLSCREEN VIEW STYLING ================= */
@@ -894,4 +1289,611 @@ body.mode-engine .panel-card:not(:nth-child(3)) { display: none; }
   height: 100%;
   display: block;
 }
+
+/* ================= RESPONSIVE VIEWPORT ADAPTATION (DESKTOP, TABLET, MOBILE) ================= */
+
+/* 1. Large Laptops & Standard Desktops (<= 1366px) */
+@media (max-width: 1366px) {
+  .brand-subtitle {
+    display: none !important;
+  }
+  .nav-tab-btn {
+    padding: 3px 6px;
+    font-size: 0.65rem;
+    letter-spacing: 0.03em;
+  }
+  .stats-section {
+    gap: 4px;
+  }
+}
+
+/* 2. Compact Desktops & Landscape Tablets (<= 1150px) */
+@media (max-width: 1150px) {
+  .metric-pill {
+    display: none !important;
+  }
+  .nav-tab-btn {
+    padding: 3px 5px;
+    font-size: 0.63rem;
+  }
+  .brand-title {
+    font-size: 0.82rem;
+  }
+  .stats-section {
+    gap: 4px;
+  }
+}
+
+/* 3. Small Desktops & Tablets in Landscape (<= 950px) */
+@media (max-width: 950px) {
+  .clock-group {
+    display: none !important;
+  }
+  .brand-title {
+    font-size: 0.78rem;
+  }
+  header.ios-header {
+    height: 52px !important;
+    min-height: 52px !important;
+    max-height: 52px !important;
+    padding: 0 8px !important;
+  }
+  main.dashboard-grid {
+    height: calc(100vh - 52px);
+    height: calc(100dvh - 52px);
+  }
+}
+
+/* 4. Tablet Portrait & Mid-Screen Devices (641px to 820px) */
+@media (min-width: 641px) and (max-width: 820px) {
+  header.ios-header {
+    height: auto !important;
+    min-height: 70px !important;
+    max-height: 74px !important;
+    padding: 4px 10px !important;
+    display: grid !important;
+    grid-template-columns: 1fr auto !important;
+    grid-template-rows: auto auto !important;
+    row-gap: 4px !important;
+    column-gap: 8px !important;
+    align-items: center !important;
+  }
+
+  .brand-section {
+    grid-column: 1 / 2 !important;
+    grid-row: 1 / 2 !important;
+  }
+
+  .brand-subtitle {
+    display: none !important;
+  }
+
+  .brand-title {
+    font-size: 0.78rem !important;
+  }
+
+  .stats-section {
+    grid-column: 2 / 3 !important;
+    grid-row: 1 / 2 !important;
+    justify-content: flex-end !important;
+    gap: 5px !important;
+  }
+
+  .metric-pill,
+  .clock-group {
+    display: none !important;
+  }
+
+  .annunciator-container {
+    padding: 4px 8px !important;
+    font-size: 0.72rem !important;
+  }
+
+  .status-badge {
+    padding: 3px 6px !important;
+    font-size: 0.68rem !important;
+  }
+
+  #btn-header-fullscreen {
+    padding: 3px 6px !important;
+    font-size: 0.68rem !important;
+  }
+
+  .nav-section-tabs {
+    grid-column: 1 / 3 !important;
+    grid-row: 2 / 3 !important;
+    width: 100% !important;
+    display: flex !important;
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    gap: 4px !important;
+    padding: 2px 4px !important;
+  }
+
+  .nav-section-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-tab-btn {
+    flex: 0 0 auto !important;
+    padding: 4px 10px !important;
+    font-size: 0.70rem !important;
+  }
+
+  body.mode-all main.dashboard-grid {
+    grid-template-columns: 1fr 1fr !important;
+    grid-template-rows: auto !important;
+    height: calc(100dvh - 74px) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 8px !important;
+    padding: 8px !important;
+  }
+
+  body.mode-all #card-pfd,
+  body.mode-all #card-nd {
+    height: 350px !important;
+    min-height: 350px !important;
+  }
+
+  body.mode-all #card-engine,
+  body.mode-all #card-analysis {
+    height: auto !important;
+    min-height: 350px !important;
+  }
+
+  body.mode-pfd main.dashboard-grid,
+  body.mode-nd main.dashboard-grid,
+  body.mode-standby main.dashboard-grid,
+  body.mode-engine main.dashboard-grid,
+  body.mode-safety main.dashboard-grid {
+    height: calc(100dvh - 74px) !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr !important;
+    padding: 6px !important;
+    overflow: hidden !important;
+  }
+
+  .analysis-container,
+  body.mode-safety .analysis-container {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .hud-alerts-column {
+    top: 78px !important;
+    right: 8px !important;
+    max-width: 280px !important;
+    max-height: calc(100dvh - 84px) !important;
+  }
+}
+
+/* 5. Mobile Smartphones in Portrait (<= 640px) */
+@media (max-width: 640px) {
+  header.ios-header {
+    height: auto !important;
+    min-height: 70px !important;
+    max-height: 74px !important;
+    padding: 3px 6px !important;
+    display: grid !important;
+    grid-template-columns: 1fr auto !important;
+    grid-template-rows: auto auto !important;
+    row-gap: 3px !important;
+    column-gap: 4px !important;
+    align-items: center !important;
+  }
+
+  .brand-section {
+    grid-column: 1 / 2 !important;
+    grid-row: 1 / 2 !important;
+    min-width: 0 !important;
+  }
+
+  .brand-title {
+    font-size: 0.74rem !important;
+    letter-spacing: 0.02em !important;
+    gap: 4px !important;
+  }
+
+  .brand-title svg {
+    width: 15px !important;
+    height: 15px !important;
+  }
+
+  .brand-subtitle,
+  .metric-pill,
+  .clock-group {
+    display: none !important;
+  }
+
+  .stats-section {
+    grid-column: 2 / 3 !important;
+    grid-row: 1 / 2 !important;
+    justify-content: flex-end !important;
+    gap: 4px !important;
+  }
+
+  .annunciator-container {
+    padding: 3px 6px !important;
+    font-size: 0.68rem !important;
+    letter-spacing: 0.02em !important;
+    border-radius: 4px !important;
+  }
+
+  .status-badge {
+    padding: 2px 5px !important;
+    font-size: 0.65rem !important;
+  }
+
+  #btn-header-fullscreen {
+    padding: 2px 5px !important;
+    font-size: 0.65rem !important;
+  }
+
+  .nav-section-tabs {
+    grid-column: 1 / 3 !important;
+    grid-row: 2 / 3 !important;
+    width: 100% !important;
+    display: flex !important;
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    gap: 3px !important;
+    padding: 2px !important;
+  }
+
+  .nav-section-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-tab-btn {
+    flex: 0 0 auto !important;
+    padding: 3px 8px !important;
+    font-size: 0.66rem !important;
+    min-height: 26px !important;
+  }
+
+  /* Mobile Dashboard: Stack 1 Column with Vertical Scroll in Complex Mode */
+  body.mode-all main.dashboard-grid {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto !important;
+    height: calc(100dvh - 74px) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 8px !important;
+    padding: 6px !important;
+  }
+
+  body.mode-all #card-pfd {
+    height: 290px !important;
+    min-height: 280px !important;
+  }
+
+  body.mode-all #card-nd {
+    height: 310px !important;
+    min-height: 300px !important;
+  }
+
+  body.mode-all #card-engine {
+    height: auto !important;
+    min-height: 280px !important;
+  }
+
+  body.mode-all #card-analysis {
+    height: auto !important;
+    min-height: 260px !important;
+  }
+
+  /* Single Fullscreen View Modes on Mobile */
+  body.mode-pfd main.dashboard-grid,
+  body.mode-nd main.dashboard-grid,
+  body.mode-standby main.dashboard-grid,
+  body.mode-engine main.dashboard-grid,
+  body.mode-safety main.dashboard-grid {
+    height: calc(100dvh - 74px) !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr !important;
+    padding: 4px !important;
+    overflow: hidden !important;
+  }
+
+  /* Engine EIS 2-Column Grid on Mobile */
+  .engine-grid,
+  body.mode-engine #view-eis {
+    grid-template-columns: repeat(2, 1fr) !important;
+    grid-template-rows: auto !important;
+    gap: 5px !important;
+    padding: 5px !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .engine-grid .gauge-card:nth-child(9),
+  body.mode-engine #view-eis .gauge-card:nth-child(9) {
+    grid-column: span 2 !important;
+  }
+
+  .gauge-card {
+    padding: 5px 7px !important;
+    min-height: 52px !important;
+  }
+
+  .gauge-title {
+    font-size: 0.62rem !important;
+    letter-spacing: 0.03em !important;
+  }
+
+  .gauge-value {
+    font-size: 0.92rem !important;
+  }
+
+  .gauge-bar-track {
+    height: 5px !important;
+    margin-top: 3px !important;
+  }
+
+  /* Standby Steam Gauges (Six-Pack): Responsive 2-column Grid on Mobile */
+  .standby-cluster-container,
+  body.mode-standby #view-standby {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    grid-template-rows: repeat(3, auto) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 10px 8px !important;
+    padding: 8px 4px !important;
+  }
+
+  .standby-gauge-box,
+  body.mode-standby .standby-gauge-box {
+    width: 100% !important;
+    max-width: 180px !important;
+    height: 170px !important;
+    margin: 0 auto !important;
+  }
+
+  .standby-gauge-box canvas,
+  body.mode-standby .standby-gauge-box canvas {
+    max-height: 140px !important;
+  }
+
+  /* Flight Safety & Vision on Mobile */
+  .analysis-container,
+  body.mode-safety .analysis-container {
+    grid-template-columns: 1fr !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    gap: 6px !important;
+    padding: 4px !important;
+  }
+
+  .analysis-subpanel {
+    padding: 6px 8px !important;
+    gap: 6px !important;
+  }
+
+  .subpanel-title {
+    font-size: 0.70rem !important;
+  }
+
+  .ils-row {
+    font-size: 0.68rem !important;
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  .ils-dots-container {
+    padding: 2px 6px !important;
+    gap: 4px !important;
+  }
+
+  .ils-dot {
+    width: 5px !important;
+    height: 5px !important;
+  }
+
+  .hud-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 4px !important;
+    font-size: 0.68rem !important;
+  }
+
+  .hud-item {
+    padding: 4px !important;
+  }
+
+  .hud-lbl {
+    font-size: 0.64rem !important;
+  }
+
+  .hud-val {
+    font-size: 0.70rem !important;
+  }
+
+  /* Panel Header & Controls on Mobile */
+  .panel-header {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+    padding: 4px 8px !important;
+    min-height: 30px !important;
+  }
+
+  .panel-title {
+    font-size: 0.70rem !important;
+    gap: 4px !important;
+  }
+
+  .panel-title svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
+
+  .panel-controls {
+    flex-wrap: wrap !important;
+    gap: 3px !important;
+    justify-content: flex-end !important;
+  }
+
+  .btn-ctrl,
+  #nd-layer-select {
+    font-size: 0.62rem !important;
+    padding: 2px 5px !important;
+  }
+
+  /* Floating Toast Alerts Stack on Mobile */
+  .hud-alerts-column {
+    top: 76px !important;
+    right: 6px !important;
+    max-width: calc(100vw - 12px) !important;
+    max-height: calc(100dvh - 80px) !important;
+    gap: 3px !important;
+  }
+
+  .hud-alert-toast {
+    padding: 2px 6px !important;
+    font-size: 0.68rem !important;
+    max-width: calc(100vw - 16px) !important;
+  }
+
+  .hud-alert-toast .warn-badge {
+    font-size: 0.66rem !important;
+    padding: 1px 4px !important;
+  }
+
+  .hud-alert-toast .hud-alert-close {
+    font-size: 1.05rem !important;
+    padding: 1px 4px !important;
+  }
+}
+
+/* 6. Mobile in Landscape (Height <= 500px) */
+@media (max-height: 500px) and (orientation: landscape) {
+  header.ios-header {
+    height: 38px !important;
+    min-height: 38px !important;
+    max-height: 38px !important;
+    padding: 0 8px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+  }
+
+  .brand-section {
+    display: flex !important;
+  }
+
+  .brand-title {
+    font-size: 0.74rem !important;
+  }
+
+  .brand-subtitle,
+  .metric-pill,
+  .clock-group {
+    display: none !important;
+  }
+
+  .nav-section-tabs {
+    width: auto !important;
+    display: flex !important;
+    overflow-x: auto !important;
+    padding: 1px 2px !important;
+  }
+
+  .nav-tab-btn {
+    padding: 2px 6px !important;
+    font-size: 0.62rem !important;
+    min-height: 22px !important;
+  }
+
+  .stats-section {
+    gap: 4px !important;
+  }
+
+  .annunciator-container {
+    padding: 2px 6px !important;
+    font-size: 0.65rem !important;
+  }
+
+  .status-badge,
+  #btn-header-fullscreen {
+    padding: 2px 5px !important;
+    font-size: 0.62rem !important;
+  }
+
+  main.dashboard-grid {
+    height: calc(100dvh - 38px) !important;
+    padding: 4px !important;
+  }
+
+  body.mode-all main.dashboard-grid {
+    grid-template-columns: 1fr 1fr !important;
+    grid-template-rows: 1fr 1fr !important;
+    overflow: hidden !important;
+    gap: 4px !important;
+  }
+
+  #card-pfd, #card-nd, #card-engine, #card-analysis {
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+
+  .standby-cluster-container {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    grid-template-rows: repeat(2, 1fr) !important;
+    overflow-y: hidden !important;
+    gap: 4px 8px !important;
+    padding: 4px !important;
+  }
+
+  .standby-gauge-box {
+    height: 100% !important;
+    max-width: none !important;
+  }
+
+  .standby-gauge-box canvas {
+    max-height: 100px !important;
+  }
+
+  .engine-grid,
+  body.mode-engine #view-eis {
+    grid-template-columns: repeat(3, 1fr) !important;
+    grid-template-rows: repeat(3, 1fr) !important;
+    gap: 4px !important;
+    padding: 4px !important;
+  }
+
+  .engine-grid .gauge-card:nth-child(9) {
+    grid-column: span 1 !important;
+  }
+
+  .gauge-card {
+    padding: 2px 5px !important;
+    min-height: 38px !important;
+  }
+
+  .gauge-title {
+    font-size: 0.58rem !important;
+  }
+
+  .gauge-value {
+    font-size: 0.80rem !important;
+  }
+
+  .gauge-bar-track {
+    height: 4px !important;
+    margin-top: 2px !important;
+  }
+
+  .hud-alerts-column {
+    top: 42px !important;
+  }
+}
+
 

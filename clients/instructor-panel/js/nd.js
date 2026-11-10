@@ -19,10 +19,13 @@ class NavigationDisplay {
       return;
     }
 
-    // UKLL (Lviv Danylo Halytskyi Intl Airport) RWY 13/31 Coordinates
-    this.ukllRwy13Threshold = [49.82026, 23.94254];
-    this.ukllRwy31Threshold = [49.80556, 23.97222];
-    this.rwy13Heading = 135.8;
+    // UKLL (Lviv Danylo Halytskyi Intl Airport) RWY 13/31 Coordinates (Official AIP Ukraine / OSM)
+    // Physical concrete runway: 3,305 m × 45 m, True heading: 135.84°
+    this.ukllRwy13Threshold = [49.820397, 23.942372];
+    this.ukllRwy13DisplacedThreshold = [49.817786, 23.946300];
+    this.ukllRwy31DisplacedThreshold = [49.799899, 23.973212];
+    this.ukllRwy31Threshold = [49.799098, 23.974418];
+    this.rwy13Heading = 135.84;
 
     this.autoFollow = true;
     this.trackPoints = [];
@@ -86,16 +89,6 @@ class NavigationDisplay {
     // Default active terrain layer: OpenTopoMap (rich elevation contours and hillshade)
     this.currentLayerKey = 'opentopo';
     this.layers.opentopo.addTo(this.map);
-
-    // Layer switcher control (top-right)
-    const baseMaps = {
-      "⛰️ Терейн (OpenTopoMap)": openTopo,
-      "🗺️ Терейн (ESRI Topo)": esriTopo,
-      "🏔️ Рельєф 3D (Hillshade)": esriRelief,
-      "🛰️ Супутник (ESRI Sat)": esriSat,
-      "📍 Векторна карта (OSM)": osm,
-    };
-    L.control.layers(baseMaps, null, { position: 'topright', collapsed: true }).addTo(this.map);
 
     // Draw Runway 13/31 & Alignment lines with high-contrast outlines
     this.drawAirportEnvironment();
@@ -176,24 +169,51 @@ class NavigationDisplay {
   }
 
   drawAirportEnvironment() {
-    // 1. Runway 13/31 Casing & Centerline
-    // Black halo casing
+    // 1. Physical Runway 13/31 (45m wide geographic polygon)
+    // Calculated perpendicular offsets (22.5m each side) matching OSM & AIP Ukraine exactly
+    const rwyPolygon = [
+      [49.820538, 23.942597],
+      [49.820256, 23.942147],
+      [49.798957, 23.974193],
+      [49.799239, 23.974643],
+    ];
+
+    // Asphalt surface fill & high-contrast border matching actual airport footprint
+    L.polygon(rwyPolygon, {
+      color: '#000000',
+      weight: 2,
+      fillColor: '#1e293b',
+      fillOpacity: 0.85,
+    }).addTo(this.map).bindTooltip('ЗПС 13/31 UKLL (3,305 × 45 м, Курс 136°)', { permanent: false });
+
+    // Runway casing halo for high contrast on satellite & topographic maps
     L.polyline([this.ukllRwy13Threshold, this.ukllRwy31Threshold], {
       color: '#000000',
-      weight: 10,
-      opacity: 0.9,
+      weight: 6,
+      opacity: 0.8,
     }).addTo(this.map);
 
-    // White asphalt line
+    // Crisp white dashed centerline
     L.polyline([this.ukllRwy13Threshold, this.ukllRwy31Threshold], {
       color: '#ffffff',
-      weight: 6,
+      weight: 2.5,
+      dashArray: '12, 10',
       opacity: 0.98,
-    }).addTo(this.map).bindTooltip('UKLL RWY 13/31 (3,305m)', { permanent: false });
+    }).addTo(this.map);
 
-    // 2. Extended ILS approach corridor (5 NM backwards along 315.8 deg)
+    // Displaced threshold landing bar (RWY 13)
+    L.polyline([
+      [49.817927, 23.946525],
+      [49.817645, 23.946075]
+    ], {
+      color: '#22c55e',
+      weight: 3.5,
+      opacity: 0.95,
+    }).addTo(this.map).bindTooltip('ЗМІЩЕНИЙ ПОРІГ ПОСАДКИ 13 (LDA 2,895 м)', { permanent: false });
+
+    // 2. Extended ILS approach corridor (5 NM backwards along 315.84 deg)
     const nmInDegreesLat = 1.0 / 60.0;
-    const nmInDegreesLon = nmInDegreesLat / Math.cos((49.82 * Math.PI) / 180);
+    const nmInDegreesLon = nmInDegreesLat / Math.cos((49.8204 * Math.PI) / 180);
     const radReciprocal = ((this.rwy13Heading + 180) % 360) * (Math.PI / 180);
 
     const fafDistanceNM = 5.0;
@@ -230,14 +250,22 @@ class NavigationDisplay {
       }).addTo(this.map).bindTooltip(`${dist} NM FINAL RWY 13`, { permanent: false, direction: 'top' });
     });
 
-    // Touchdown threshold marker
+    // Touchdown threshold markers
     L.circleMarker(this.ukllRwy13Threshold, {
       radius: 6,
       color: '#ffffff',
       fillColor: '#22c55e',
-      fillOpacity: 0.9,
+      fillOpacity: 0.95,
       weight: 2,
-    }).addTo(this.map).bindTooltip('THR 13 UKLL', { permanent: false });
+    }).addTo(this.map).bindTooltip('THR 13 UKLL (326 м MSL)', { permanent: false });
+
+    L.circleMarker(this.ukllRwy31Threshold, {
+      radius: 6,
+      color: '#ffffff',
+      fillColor: '#ef4444',
+      fillOpacity: 0.95,
+      weight: 2,
+    }).addTo(this.map).bindTooltip('THR 31 UKLL (328 м MSL)', { permanent: false });
   }
 
   update(telemetry, isOnline) {

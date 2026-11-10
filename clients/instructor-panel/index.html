@@ -2,14 +2,14 @@
 <html lang="uk">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>AT-F3001C Simulator | Instructor Operating Station (IOS)</title>
   
   <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css?v=3" />
   
   <!-- Custom Avionics CSS -->
-  <link rel="stylesheet" href="css/main.css?v=2" />
+  <link rel="stylesheet" href="css/main.css?v=15" />
 </head>
 <body>
   <!-- HEADER / SYSTEM STATUS BAR -->
@@ -24,42 +24,40 @@
       <div class="brand-subtitle">Cessna 172SP G1000 &bull; UKLL (Lviv) RWY 13</div>
     </div>
 
-    <!-- Multi-Window Popout Toolbar for Multi-Monitor Simulators -->
-    <div class="nav-multi-window">
-      <span class="nav-multi-label">Вкладки (Мультимонітор):</span>
-      <a href="pfd.html" target="_blank" class="btn-window-link" title="Відкрити PFD в новій вкладці">&#10697; PFD</a>
-      <a href="nd.html" target="_blank" class="btn-window-link" title="Відкрити ND Карту в новій вкладці">&#10697; ND Карта</a>
-      <a href="standby.html" target="_blank" class="btn-window-link" title="Відкрити 3 Дублюючі аналогові прилади в новій вкладці">&#10697; Дублюючі прилади</a>
-      <a href="engine.html" target="_blank" class="btn-window-link" title="Відкрити Двигун (EIS) в новій вкладці">&#10697; Двигун (EIS)</a>
-      <a href="safety.html" target="_blank" class="btn-window-link" title="Відкрити Безпеку польоту в новій вкладці">&#10697; Безпека</a>
-    </div>
+    <!-- Central Unified Section Tabs (Aeronautical Softkeys, Strict Engineering Style) -->
+    <nav class="nav-section-tabs" id="nav-section-tabs" aria-label="Розділи комплексу">
+      <button class="nav-tab-btn active" data-view="all" title="Комплексний огляд (всі 4 панелі)">ГОЛОВНА</button>
+      <button class="nav-tab-btn" data-view="pfd" title="Основний пілотажний дисплей (PFD)">PFD</button>
+      <button class="nav-tab-btn" data-view="nd" title="Навігаційний дисплей карти (ND)">ND КАРТА</button>
+      <button class="nav-tab-btn" data-view="standby" title="Резервні дублюючі прилади">ДУБЛЮЮЧІ</button>
+      <button class="nav-tab-btn" data-view="engine" title="Контроль силової установки (EIS)">ДВИГУН (EIS)</button>
+      <button class="nav-tab-btn" data-view="safety" title="Безпека польоту та глісада">БЕЗПЕКА</button>
+    </nav>
 
-    <!-- Center Annunciator Master Warning / Caution Banner -->
-    <div class="annunciator-section">
-      <div id="annunciator-banner" class="annunciator-container offline">
-        <span class="annunciator-offline">OFFLINE</span>
-      </div>
-    </div>
-
-    <!-- Network & Microservice Diagnostics -->
+    <!-- Network & Microservice Diagnostics (Fixed Right) -->
     <div class="stats-section">
+      <!-- Annunciator Status Badge -->
+      <div id="annunciator-banner" class="annunciator-container normal" title="Статус систем">
+        <span class="annunciator-normal">SYSTEMS NORMAL</span>
+      </div>
+
       <div id="conn-status-badge" class="status-badge" style="background-color: #ef4444;">DISCONNECTED</div>
       
       <div class="metric-pill">RTT: <span id="stat-latency-val">-- ms</span></div>
       <div class="metric-pill">RATE: <span id="stat-hz-val">-- Hz</span></div>
 
-      <div class="service-pills-group">
-        <div id="pill-telemetry" class="service-pill offline">TELEMETRY: OFFLINE</div>
-        <div id="pill-vision" class="service-pill offline">VISION: OFFLINE</div>
-        <div id="pill-analytics" class="service-pill offline">ANALYTICS: OFFLINE</div>
-      </div>
-
       <div class="clock-group">
         <div id="header-zulu-clock" style="font-weight:700;">00:00:00 Z</div>
-        <div class="session-time">SES: <span id="header-session-time">00:00</span></div>
       </div>
+
+      <button id="btn-header-fullscreen" class="btn-ctrl" title="Повноекранний режим (F11)">FULLSCREEN</button>
     </div>
   </header>
+
+  <!-- Floating Toast Notifications Column (Pinned to Top-Right Corner) -->
+  <div id="hud-alerts-column" class="hud-alerts-column" role="region" aria-label="Flight Safety Alerts">
+    <!-- Active error/warning badges dynamically inserted here as vertical stack -->
+  </div>
 
   <!-- MAIN DASHBOARD GRID -->
   <main class="dashboard-grid">
@@ -71,7 +69,7 @@
           Primary Flight Display (PFD)
         </div>
         <div class="panel-controls">
-          <a href="pfd.html" target="_blank" class="btn-popout" title="Відкрити PFD в новій вкладці для окремого монітора">&#10697; Вкладка</a>
+          <button class="btn-ctrl btn-switch-view" data-view="pfd" title="Розгорнути PFD на весь екран">РОЗГОРНУТИ</button>
           <button class="btn-ctrl btn-fullscreen" data-target="card-pfd" title="Toggle Fullscreen">FULLSCREEN</button>
         </div>
       </div>
@@ -89,16 +87,16 @@
         </div>
         <div class="panel-controls">
           <select id="nd-layer-select" class="btn-ctrl" style="cursor:pointer; background:#0c1322; color:#38bdf8; border-color:#1e2e4a;" title="Режим відображення терейну">
-            <option value="opentopo" selected>⛰️ Терейн (OpenTopo)</option>
-            <option value="esritopo">🗺️ Терейн (ESRI Topo)</option>
-            <option value="relief">🏔️ Рельєф 3D (Hillshade)</option>
-            <option value="satellite">🛰️ Супутник (Satellite)</option>
-            <option value="osm">📍 Карта (OSM)</option>
+            <option value="opentopo" selected>Терейн (OpenTopo)</option>
+            <option value="esritopo">Терейн (ESRI Topo)</option>
+            <option value="relief">Рельєф 3D (Hillshade)</option>
+            <option value="satellite">Супутник (ESRI Sat)</option>
+            <option value="osm">Векторна карта (OSM)</option>
           </select>
           <button id="btn-nd-follow" class="btn-ctrl active">AUTO-PAN: ON</button>
           <button id="btn-nd-fit" class="btn-ctrl">FIT TRACK</button>
           <button id="btn-nd-reset" class="btn-ctrl">CLEAR TRACK</button>
-          <a href="nd.html" target="_blank" class="btn-popout" title="Відкрити ND карту в новій вкладці для окремого монітора">&#10697; Вкладка</a>
+          <button class="btn-ctrl btn-switch-view" data-view="nd" title="Розгорнути карту ND на весь екран">РОЗГОРНУТИ</button>
           <button class="btn-ctrl btn-fullscreen" data-target="card-nd" title="Toggle Fullscreen">FULLSCREEN</button>
         </div>
       </div>
@@ -118,9 +116,7 @@
         </div>
         <div class="panel-controls">
           <button id="tab-btn-eis" class="btn-ctrl active" title="Показати цифрові параметри двигуна EIS">ДВИГУН (EIS)</button>
-          <button id="tab-btn-standby" class="btn-ctrl" title="Показати 3 дублюючі аналогові прилади">ДУБЛЮЮЧІ ПРИЛАДИ (3)</button>
-          <a id="popout-eis" href="engine.html" target="_blank" class="btn-popout" title="Відкрити Двигун EIS в новій вкладці">&#10697; Вкладка EIS</a>
-          <a id="popout-standby" href="standby.html" target="_blank" class="btn-popout hidden" title="Відкрити Дублюючі прилади в новій вкладці">&#10697; Вкладка Прилади</a>
+          <button id="tab-btn-standby" class="btn-ctrl" title="Показати 6 дублюючих аналогових приладів (Basic Six)">ДУБЛЮЮЧІ ПРИЛАДИ (6)</button>
           <button class="btn-ctrl btn-fullscreen" data-target="card-engine" title="Toggle Fullscreen">FULLSCREEN</button>
         </div>
       </div>
@@ -151,13 +147,13 @@
             <div class="no-data-badge hidden" id="eng-egt-badge">NO DATA</div>
           </div>
 
-          <!-- Oil Pressure -->
+          <!-- Oil Pressure (Inverted scale: low pressure is RED, normal 50-90 is GREEN) -->
           <div class="gauge-card">
             <div class="gauge-header">
               <span class="gauge-title">OIL PRESS (PSI)</span>
               <span class="gauge-value" id="eng-oil-press-val">--</span>
             </div>
-            <div class="gauge-bar-track">
+            <div class="gauge-bar-track scale-inverted">
               <div class="gauge-bar-fill" id="eng-oil-press-bar"></div>
             </div>
             <div class="no-data-badge hidden" id="eng-oil-press-badge">NO DATA</div>
@@ -187,64 +183,65 @@
             <div class="no-data-badge hidden" id="eng-fuel-flow-badge">NO DATA</div>
           </div>
 
-          <!-- Fuel Quantity -->
+          <!-- Fuel Quantity (Inverted scale: low/empty is RED, full is GREEN) -->
           <div class="gauge-card">
             <div class="gauge-header">
               <span class="gauge-title">FUEL QTY (GAL)</span>
               <span class="gauge-value" id="eng-fuel-qty-val">--</span>
             </div>
-            <div class="gauge-bar-track">
+            <div class="gauge-bar-track scale-inverted">
               <div class="gauge-bar-fill" id="eng-fuel-qty-bar"></div>
             </div>
             <div class="no-data-badge hidden" id="eng-fuel-qty-badge">NO DATA</div>
           </div>
 
-          <!-- Throttle Lever -->
+          <!-- Throttle Lever (Flight Control Position: Neutral Avionics Cyan) -->
           <div class="gauge-card">
             <div class="gauge-header">
               <span class="gauge-title">THROTTLE LEVER</span>
               <span class="gauge-value" id="ctrl-throttle-val">--</span>
             </div>
-            <div class="gauge-bar-track">
+            <div class="gauge-bar-track scale-controls">
               <div class="gauge-bar-fill" id="ctrl-throttle-bar"></div>
             </div>
             <div class="no-data-badge hidden" id="ctrl-throttle-badge">NO DATA</div>
           </div>
 
-          <!-- Flaps Position -->
+          <!-- Flaps Position (Flight Control Position: Neutral Avionics Cyan) -->
           <div class="gauge-card">
             <div class="gauge-header">
               <span class="gauge-title">WING FLAPS</span>
               <span class="gauge-value" id="ctrl-flaps-val">--</span>
             </div>
-            <div class="gauge-bar-track">
+            <div class="gauge-bar-track scale-controls">
               <div class="gauge-bar-fill" id="ctrl-flaps-bar"></div>
             </div>
             <div class="no-data-badge hidden" id="ctrl-flaps-badge">NO DATA</div>
           </div>
 
-          <!-- Elevator Stick -->
+          <!-- Elevator Stick (Flight Control Position: Neutral Avionics Cyan, Bipolar Scale) -->
           <div class="gauge-card">
             <div class="gauge-header">
               <span class="gauge-title">ELEVATOR STICK</span>
               <span class="gauge-value" id="ctrl-elevator-val">--</span>
             </div>
-            <div class="gauge-bar-track">
+            <div class="gauge-bar-track scale-controls scale-bipolar">
               <div class="gauge-bar-fill" id="ctrl-elevator-bar"></div>
             </div>
             <div class="no-data-badge hidden" id="ctrl-elevator-badge">NO DATA</div>
           </div>
         </div>
 
-        <!-- MODE B: 3 STANDBY ANALOG GAUGES CLUSTER -->
+        <!-- MODE B: 6 STANDBY ANALOG GAUGES CLUSTER (BASIC SIX / SIX-PACK) -->
         <div class="standby-cluster-container hidden" id="view-standby">
-          <!-- 1. Airspeed -->
+          <!-- ROW 1 (TOP) -->
+          <!-- 1. Airspeed Indicator -->
           <div class="standby-gauge-box">
             <canvas id="gauge-airspeed-dash"></canvas>
             <div class="standby-gauge-label">AIRSPEED (KT)</div>
           </div>
 
-          <!-- 2. Gyro Horizon -->
+          <!-- 2. Gyro Horizon / Attitude Indicator -->
           <div class="standby-gauge-box">
             <canvas id="gauge-attitude-dash"></canvas>
             <div class="standby-gauge-label">GYRO HORIZON</div>
@@ -254,6 +251,25 @@
           <div class="standby-gauge-box">
             <canvas id="gauge-altimeter-dash"></canvas>
             <div class="standby-gauge-label">ALTIMETER (FT)</div>
+          </div>
+
+          <!-- ROW 2 (BOTTOM) -->
+          <!-- 4. Turn Coordinator -->
+          <div class="standby-gauge-box">
+            <canvas id="gauge-turn-dash"></canvas>
+            <div class="standby-gauge-label">TURN COORDINATOR</div>
+          </div>
+
+          <!-- 5. Heading Indicator (Directional Gyro) -->
+          <div class="standby-gauge-box">
+            <canvas id="gauge-heading-dash"></canvas>
+            <div class="standby-gauge-label">HEADING (GYRO)</div>
+          </div>
+
+          <!-- 6. Vertical Speed Indicator (VSI) -->
+          <div class="standby-gauge-box">
+            <canvas id="gauge-vsi-dash"></canvas>
+            <div class="standby-gauge-label">VERTICAL SPEED</div>
           </div>
         </div>
       </div>
@@ -268,7 +284,7 @@
         </div>
         <div class="panel-controls">
           <button id="btn-audio-mute" class="btn-ctrl">AUDIO: ON</button>
-          <a href="safety.html" target="_blank" class="btn-popout" title="Відкрити Безпеку в новій вкладці для окремого монітора">&#10697; Вкладка</a>
+          <button class="btn-ctrl btn-switch-view" data-view="safety" title="Розгорнути Безпеку на весь екран">РОЗГОРНУТИ</button>
           <button class="btn-ctrl btn-fullscreen" data-target="card-analysis" title="Toggle Fullscreen">FULLSCREEN</button>
         </div>
       </div>
@@ -326,7 +342,7 @@
   <div id="landing-report-modal" class="modal-overlay hidden">
     <div class="modal-content">
       <div class="modal-header">
-        <div class="modal-title">&#9992; TOUCHDOWN &amp; LANDING REPORT CARD</div>
+        <div class="modal-title">TOUCHDOWN &amp; LANDING REPORT CARD</div>
         <button id="btn-close-report" class="btn-ctrl">&times;</button>
       </div>
 
@@ -361,15 +377,15 @@
   </div>
 
   <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js?v=3"></script>
 
   <!-- Avionics Modular Scripts -->
-  <script src="js/audio.js?v=2"></script>
-  <script src="js/pfd.js?v=2"></script>
-  <script src="js/nd.js?v=2"></script>
-  <script src="js/standby_gauges.js?v=2"></script>
-  <script src="js/engine.js?v=2"></script>
-  <script src="js/alerts.js?v=2"></script>
-  <script src="js/app.js?v=2"></script>
+  <script src="js/audio.js?v=15"></script>
+  <script src="js/pfd.js?v=15"></script>
+  <script src="js/nd.js?v=15"></script>
+  <script src="js/standby_gauges.js?v=15"></script>
+  <script src="js/engine.js?v=15"></script>
+  <script src="js/alerts.js?v=15"></script>
+  <script src="js/app.js?v=15"></script>
 </body>
 </html>

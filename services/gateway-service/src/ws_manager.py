@@ -128,6 +128,7 @@ class WebSocketManager:
             # Only do serialization and network I/O if there are connected clients or for diagnostics
             if self.active_connections:
                 payload = self.aggregator.get_unified_payload()
+                payload["type"] = "telemetry_snapshot"
                 payload["connected_clients"] = len(self.active_connections)
                 payload["measured_hz"] = round(self.actual_hz, 1)
 

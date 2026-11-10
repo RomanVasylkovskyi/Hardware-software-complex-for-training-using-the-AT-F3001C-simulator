@@ -55,9 +55,9 @@ app.add_middleware(
 # Airport runway database for automatic GPS centerline alignment
 AIRPORT_RUNWAY_DB: Dict[str, Dict[str, Any]] = {
     "UKLL:13": {
-        "threshold_lat": 49.81482,
-        "threshold_lon": 23.95450,
-        "heading_deg": 130.0,
+        "threshold_lat": 49.820397,
+        "threshold_lon": 23.942372,
+        "heading_deg": 135.84,
         "airport_name": "Lviv Danylo Halytskyi International Airport",
     }
 }
