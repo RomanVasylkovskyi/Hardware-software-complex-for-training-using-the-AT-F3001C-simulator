@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AT-F3001C | Navigation Display (ND)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="css/main.css?v=2" />
+</head>
+<body class="standalone-body">
+  <header class="standalone-header">
+    <div class="brand-section">
+      <div class="brand-title">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+        </svg>
+        NAVIGATION DISPLAY (ND) &bull; UKLL RWY 13
+      </div>
+      <div class="brand-subtitle">Tactical Moving Map &bull; Flight Path &bull; Airport Environment</div>
+    </div>
+
+    <div class="nav-multi-window">
+      <span class="nav-multi-label">Розділи:</span>
+      <a href="index.html" class="btn-window-link">Головна</a>
+      <a href="pfd.html" target="_blank" class="btn-window-link">&#10697; PFD</a>
+      <a href="standby.html" target="_blank" class="btn-window-link">&#10697; Дублюючі прилади</a>
+      <a href="engine.html" target="_blank" class="btn-window-link">&#10697; Двигун (EIS)</a>
+      <a href="safety.html" target="_blank" class="btn-window-link">&#10697; Безпека</a>
+    </div>
+
+    <div class="stats-section">
+      <select id="nd-layer-select" class="btn-ctrl" style="cursor:pointer; background:#0c1322; color:#38bdf8; border-color:#1e2e4a;" title="Режим відображення терейну">
+        <option value="opentopo" selected>⛰️ Терейн (OpenTopo)</option>
+        <option value="esritopo">🗺️ Терейн (ESRI Topo)</option>
+        <option value="relief">🏔️ Рельєф 3D (Hillshade)</option>
+        <option value="satellite">🛰️ Супутник (Satellite)</option>
+        <option value="osm">📍 Карта (OSM)</option>
+      </select>
+      <button id="btn-follow" class="btn-ctrl active">AUTO-PAN: ON</button>
+      <button id="btn-fit" class="btn-ctrl">FIT TRACK</button>
+      <button id="btn-reset" class="btn-ctrl">CLEAR TRACK</button>
+      <div id="conn-badge" class="status-badge" style="background-color: #ef4444; margin-left:8px;">DISCONNECTED</div>
+      <button id="btn-fullscreen" class="btn-ctrl" style="margin-left:8px;">FULLSCREEN</button>
+    </div>
+  </header>
+
+  <main class="standalone-content">
+    <div id="nd-map" style="width:100%; height:100%;"></div>
+    <div id="nd-no-gps-alert" class="no-gps-alert hidden">NO GPS FIX &bull; POSITION LOST</div>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/nd.js?v=2"></script>
+  <script>
+    const nd = new NavigationDisplay('nd-map', 'nd-no-gps-alert');
+    const connBadge = document.getElementById('conn-badge');
+
+    const layerSelect = document.getElementById('nd-layer-select');
+    if (layerSelect) {
+      layerSelect.addEventListener('change', (e) => nd.setLayer(e.target.value));
+    }
+
+    document.getElementById('btn-follow').addEventListener('click', () => nd.toggleAutoFollow());
+    document.getElementById('btn-fit').addEventListener('click', () => nd.fitTrack());
+    document.getElementById('btn-reset').addEventListener('click', () => nd.resetTrack());
+
+    function connectWs() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${proto}//${location.host}/ws/telemetry`;
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        connBadge.innerText = 'CONNECTED';
+        connBadge.style.backgroundColor = '#22c55e';
+      };
+
+      ws.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          if (msg.type === 'telemetry_snapshot') {
+            const isOnline = msg.services?.telemetry === 'ONLINE' || msg.status?.connection === 'CONNECTED' || msg.status?.connection === 'REPLAY';
+            nd.update(msg.telemetry, isOnline);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      ws.onclose = () => {
+        connBadge.innerText = 'DISCONNECTED';
+        connBadge.style.backgroundColor = '#ef4444';
+        nd.update(null, false);
+        setTimeout(connectWs, 2000);
+      };
+
+      ws.onerror = () => ws.close();
+    }
+
+    document.getElementById('btn-fullscreen').addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => console.warn(err));
+      } else {
+        document.exitFullscreen().catch(err => console.warn(err));
+      }
+    });
+
+    connectWs();
+  </script>
+</body>
+</html>

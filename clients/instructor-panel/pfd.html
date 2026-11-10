@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AT-F3001C | Primary Flight Display (PFD)</title>
+  <link rel="stylesheet" href="css/main.css" />
+</head>
+<body class="standalone-body">
+  <header class="standalone-header">
+    <div class="brand-section">
+      <div class="brand-title">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+        </svg>
+        PRIMARY FLIGHT DISPLAY (PFD)
+      </div>
+      <div class="brand-subtitle">Garmin G1000 Glass Cockpit Avionics &bull; Cessna 172SP</div>
+    </div>
+
+    <div class="nav-multi-window">
+      <span class="nav-multi-label">Розділи:</span>
+      <a href="index.html" class="btn-window-link">Головна</a>
+      <a href="nd.html" target="_blank" class="btn-window-link">&#10697; ND Карта</a>
+      <a href="standby.html" target="_blank" class="btn-window-link">&#10697; Дублюючі прилади</a>
+      <a href="engine.html" target="_blank" class="btn-window-link">&#10697; Двигун (EIS)</a>
+      <a href="safety.html" target="_blank" class="btn-window-link">&#10697; Безпека</a>
+    </div>
+
+    <div class="stats-section">
+      <div id="conn-badge" class="status-badge" style="background-color: #ef4444;">DISCONNECTED</div>
+      <div class="metric-pill">RATE: <span id="hz-val">-- Hz</span></div>
+      <button id="btn-fullscreen" class="btn-ctrl" style="margin-left:8px;">FULLSCREEN</button>
+    </div>
+  </header>
+
+  <main class="standalone-content">
+    <canvas id="pfd-canvas"></canvas>
+  </main>
+
+  <script src="js/pfd.js"></script>
+  <script>
+    const pfd = new PrimaryFlightDisplay('pfd-canvas');
+    const connBadge = document.getElementById('conn-badge');
+    const hzVal = document.getElementById('hz-val');
+    let packetCount = 0;
+    let lastHzTime = performance.now();
+
+    function connectWs() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${proto}//${location.host}/ws/telemetry`;
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        connBadge.innerText = 'CONNECTED';
+        connBadge.style.backgroundColor = '#22c55e';
+      };
+
+      ws.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          if (msg.type === 'telemetry_snapshot') {
+            const isOnline = msg.services?.telemetry === 'ONLINE' || msg.status?.connection === 'CONNECTED' || msg.status?.connection === 'REPLAY';
+            pfd.update(msg.telemetry, isOnline);
+
+            packetCount++;
+            const now = performance.now();
+            if (now - lastHzTime >= 1000) {
+              hzVal.innerText = `${packetCount} Hz`;
+              packetCount = 0;
+              lastHzTime = now;
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      ws.onclose = () => {
+        connBadge.innerText = 'DISCONNECTED';
+        connBadge.style.backgroundColor = '#ef4444';
+        pfd.update(null, false);
+        setTimeout(connectWs, 2000);
+      };
+
+      ws.onerror = () => ws.close();
+    }
+
+    document.getElementById('btn-fullscreen').addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => console.warn(err));
+      } else {
+        document.exitFullscreen().catch(err => console.warn(err));
+      }
+    });
+
+    connectWs();
+  </script>
+</body>
+</html>

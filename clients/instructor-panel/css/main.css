@@ -1,0 +1,897 @@
+/**
+ * Modern Glass-Cockpit Avionics Theme
+ * Color Palette: Garmin G1000 / Collins Pro Line Dark Navy & Neon Avionics
+ */
+
+:root {
+  --bg-primary: #060a12;
+  --bg-secondary: #0c1322;
+  --bg-card: #121c30;
+  --bg-card-border: #1e2e4a;
+  
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  
+  --avionics-cyan: #00e5ff;
+  --avionics-magenta: #e040fb;
+  --avionics-green: #22c55e;
+  --avionics-yellow: #eab308;
+  --avionics-red: #ef4444;
+  --avionics-amber: #f59e0b;
+  --avionics-blue: #007fc7;
+  
+  --font-mono: "Consolas", "Monaco", "Cascadia Code", "Roboto Mono", monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ================= HEADER BAR ================= */
+header.ios-header {
+  background-color: var(--bg-secondary);
+  border-bottom: 2px solid var(--bg-card-border);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 58px;
+  z-index: 1000;
+}
+
+.brand-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brand-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--avionics-cyan);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* Center Annunciator Banner */
+.annunciator-section {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  max-width: 480px;
+}
+
+.annunciator-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: all 0.2s ease;
+}
+
+.annunciator-container.normal {
+  background: #0f2027;
+  border: 1px solid #1a3c40;
+  color: var(--avionics-green);
+}
+
+.annunciator-container.master-warning {
+  background: rgba(239, 68, 68, 0.25);
+  border: 2px solid var(--avionics-red);
+  color: #ffffff;
+  animation: pulse-red 0.8s infinite alternate;
+}
+
+.annunciator-container.master-caution {
+  background: rgba(245, 158, 11, 0.25);
+  border: 2px solid var(--avionics-amber);
+  color: #ffffff;
+  animation: pulse-amber 1s infinite alternate;
+}
+
+.annunciator-container.offline {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: var(--text-dim);
+}
+
+.warn-badge {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.warn-badge-red {
+  background-color: var(--avionics-red);
+  color: #ffffff;
+}
+
+.warn-badge-amber {
+  background-color: var(--avionics-amber);
+  color: #000000;
+}
+
+@keyframes pulse-red {
+  from { box-shadow: 0 0 4px var(--avionics-red); }
+  to { box-shadow: 0 0 16px var(--avionics-red); }
+}
+
+@keyframes pulse-amber {
+  from { box-shadow: 0 0 4px var(--avionics-amber); }
+  to { box-shadow: 0 0 14px var(--avionics-amber); }
+}
+
+/* System Stats & Service Pills */
+.stats-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-badge {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: #000000;
+}
+
+.service-pills-group {
+  display: flex;
+  gap: 6px;
+}
+
+.service-pill {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.service-pill.online {
+  background-color: rgba(34, 197, 94, 0.18);
+  border: 1px solid var(--avionics-green);
+  color: var(--avionics-green);
+}
+
+.service-pill.offline {
+  background-color: rgba(239, 68, 68, 0.18);
+  border: 1px solid var(--avionics-red);
+  color: var(--avionics-red);
+}
+
+.metric-pill {
+  background-color: var(--bg-card);
+  border: 1px solid var(--bg-card-border);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.metric-pill span {
+  color: var(--avionics-cyan);
+  font-weight: 700;
+}
+
+.clock-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-main);
+}
+
+.clock-group .session-time {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+/* ================= MAIN DASHBOARD GRID ================= */
+main.dashboard-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1.25fr 1fr;
+  gap: 10px;
+  padding: 10px;
+  height: calc(100vh - 58px);
+  overflow: hidden;
+}
+
+.panel-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.panel-header {
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--bg-card-border);
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+}
+
+.panel-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--avionics-cyan);
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-ctrl {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-card-border);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-ctrl:hover {
+  background: #1e293b;
+  color: var(--text-main);
+}
+
+.btn-ctrl.active {
+  background: var(--avionics-cyan);
+  color: #000000;
+  border-color: var(--avionics-cyan);
+  font-weight: 700;
+}
+
+.btn-ctrl.muted {
+  background: var(--avionics-red);
+  color: #ffffff;
+  border-color: var(--avionics-red);
+}
+
+.panel-body {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+}
+
+/* ================= PFD CANVAS ================= */
+#pfd-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ================= ND LEAFLET MAP ================= */
+#nd-map {
+  width: 100%;
+  height: 100%;
+  background: #1e293b;
+  position: relative;
+}
+
+.nd-terrain-badge {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  background: rgba(10, 15, 26, 0.90);
+  border: 1px solid var(--bg-card-border);
+  color: #38bdf8;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 4px;
+  z-index: 900;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  letter-spacing: 0.04em;
+}
+
+.nd-terrain-badge span {
+  color: var(--avionics-green);
+}
+
+/* Custom styling for Leaflet layers control in avionics theme */
+.leaflet-control-layers {
+  background: rgba(12, 19, 34, 0.92) !important;
+  color: var(--text-main) !important;
+  border: 1px solid var(--bg-card-border) !important;
+  border-radius: 6px !important;
+  font-family: var(--font-mono) !important;
+  font-size: 0.75rem !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.7) !important;
+}
+
+.leaflet-control-layers-expanded {
+  padding: 8px 12px !important;
+}
+
+.leaflet-control-layers-base label {
+  margin-bottom: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nd-aircraft-marker-container {
+  background: transparent;
+  border: none;
+}
+
+.nd-aircraft-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center center;
+  transition: transform 0.08s linear;
+}
+
+/* NO GPS FIX RED ALERT BANNER */
+.no-gps-alert {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(220, 38, 38, 0.95);
+  border: 2px solid #ffffff;
+  color: #ffffff;
+  padding: 8px 24px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  z-index: 1000;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+  animation: blink 0.8s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+/* ================= ENGINE GAUGES PANEL (EIS) ================= */
+.engine-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 8px;
+  padding: 10px;
+}
+
+.gauge-card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+}
+
+.gauge-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.gauge-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.gauge-value {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--avionics-cyan);
+}
+
+.gauge-bar-track {
+  background-color: #0b111e;
+  border: 1px solid #1e293b;
+  border-radius: 3px;
+  height: 8px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.gauge-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #22c55e, #38bdf8);
+  transition: width 0.1s linear;
+}
+
+/* NO DATA ERROR BADGE */
+.no-data-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: rgba(239, 68, 68, 0.9);
+  color: #ffffff;
+  border: 1px solid #ffffff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  z-index: 5;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+}
+
+/* ================= FLIGHT ANALYSIS & AI PANEL ================= */
+.analysis-container {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 10px;
+  padding: 10px;
+}
+
+.analysis-subpanel {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 6px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.subpanel-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--avionics-cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid #1e293b;
+  padding-bottom: 4px;
+}
+
+.status-pill {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.status-online {
+  background-color: rgba(34, 197, 94, 0.2);
+  border: 1px solid var(--avionics-green);
+  color: var(--avionics-green);
+}
+
+.status-caution {
+  background-color: rgba(234, 179, 8, 0.2);
+  border: 1px solid var(--avionics-yellow);
+  color: var(--avionics-yellow);
+}
+
+.status-error {
+  background-color: rgba(239, 68, 68, 0.2);
+  border: 1px solid var(--avionics-red);
+  color: var(--avionics-red);
+}
+
+.status-offline, .status-neutral {
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  color: var(--text-dim);
+}
+
+/* ILS Deviation Needles */
+.ils-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.ils-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.ils-dots-container {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  background-color: #060a12;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #1e293b;
+}
+
+.ils-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #334155;
+}
+
+.ils-dot.ils-dot-active.ils-green {
+  background-color: var(--avionics-green);
+  box-shadow: 0 0 6px var(--avionics-green);
+}
+
+.ils-dot.ils-dot-active.ils-amber {
+  background-color: var(--avionics-amber);
+  box-shadow: 0 0 6px var(--avionics-amber);
+}
+
+.ils-dot.ils-dot-active.ils-red {
+  background-color: var(--avionics-red);
+  box-shadow: 0 0 6px var(--avionics-red);
+}
+
+/* Vision HUD */
+.hud-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  font-size: 0.72rem;
+}
+
+.hud-item {
+  background: #080d17;
+  border: 1px solid #1e293b;
+  padding: 6px;
+  border-radius: 4px;
+}
+
+.hud-lbl {
+  color: var(--text-dim);
+  font-size: 0.68rem;
+}
+
+.hud-val {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.text-ok { color: var(--avionics-green); }
+.text-warn { color: var(--avionics-yellow); }
+.text-cyan { color: var(--avionics-cyan); }
+.text-muted { color: var(--text-dim); }
+
+/* ================= LANDING REPORT MODAL ================= */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(2, 6, 23, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background-color: var(--bg-card);
+  border: 2px solid var(--avionics-cyan);
+  border-radius: 10px;
+  width: 90%;
+  max-width: 480px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--bg-card-border);
+  padding-bottom: 10px;
+}
+
+.modal-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--avionics-cyan);
+  letter-spacing: 0.05em;
+}
+
+.modal-score-box {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.score-number {
+  font-family: var(--font-mono);
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: var(--avionics-green);
+}
+
+.score-grade {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: 0.05em;
+}
+
+.modal-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-family: var(--font-mono);
+}
+
+.metric-item {
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-card-border);
+  padding: 8px 12px;
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.btn-primary {
+  background: var(--avionics-cyan);
+  color: #000000;
+  border: none;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* UTILITY CLASSES */
+.hidden {
+  display: none !important;
+}
+
+/* TABLET FULLSCREEN VIEW MODES */
+body.mode-pfd main.dashboard-grid {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+body.mode-pfd .panel-card:not(:nth-child(1)) { display: none; }
+
+body.mode-nd main.dashboard-grid {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+body.mode-nd .panel-card:not(:nth-child(2)) { display: none; }
+
+body.mode-engine main.dashboard-grid {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+body.mode-engine .panel-card:not(:nth-child(3)) { display: none; }
+
+/* ================= MULTI-WINDOW / MULTI-MONITOR NAVIGATION ================= */
+.nav-multi-window {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(18, 28, 48, 0.7);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+
+.nav-multi-label {
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+
+.btn-window-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-card-border);
+  color: var(--avionics-cyan);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-window-link:hover {
+  background: var(--avionics-cyan);
+  color: #000000;
+  border-color: var(--avionics-cyan);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.4);
+}
+
+.btn-popout {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 229, 255, 0.1);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  color: var(--avionics-cyan);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 0.70rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-popout:hover {
+  background: var(--avionics-cyan);
+  color: #000000;
+}
+
+/* ================= STANDBY ANALOG STEAM GAUGES ================= */
+.standby-cluster-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  width: 100%;
+  height: 100%;
+  padding: 8px;
+  background: linear-gradient(180deg, #181d24 0%, #0d1015 100%);
+  border-radius: 4px;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.standby-gauge-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  max-width: 320px;
+  position: relative;
+}
+
+.standby-gauge-box canvas {
+  width: 100%;
+  height: 100%;
+  max-height: 280px;
+  display: block;
+}
+
+.standby-gauge-label {
+  font-family: var(--font-mono);
+  font-size: 0.70rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 4px;
+  letter-spacing: 0.05em;
+}
+
+/* ================= STANDALONE FULLSCREEN VIEW STYLING ================= */
+.standalone-body {
+  height: 100vh;
+  width: 100vw;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  overflow: hidden;
+}
+
+.standalone-header {
+  background-color: var(--bg-secondary);
+  border-bottom: 2px solid var(--bg-card-border);
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  z-index: 1000;
+}
+
+.standalone-content {
+  flex: 1;
+  width: 100%;
+  height: calc(100vh - 48px);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.standalone-content canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+

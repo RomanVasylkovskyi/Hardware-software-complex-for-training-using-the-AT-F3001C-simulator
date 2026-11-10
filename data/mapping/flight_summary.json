@@ -1,0 +1,45 @@
+{
+  "aircraft": "Cessna 172SP Skyhawk (G1000)",
+  "airport_icao": "UKLL",
+  "airport_name": "Lviv Danylo Halytskyi International Airport",
+  "runway": "13",
+  "total_data_points": 2114,
+  "duration_sec": 217.5,
+  "duration_min": 3.63,
+  "total_ground_distance_m": 7925.2,
+  "total_ground_distance_km": 7.93,
+  "total_ground_distance_nm": 4.28,
+  "sampling_rate_hz": 9.72,
+  "start_position": {
+    "latitude": 49.82026,
+    "longitude": 23.94254,
+    "altitude_msl_ft": 1064.01,
+    "altitude_agl_ft": 0.06
+  },
+  "end_position": {
+    "latitude": 49.80414,
+    "longitude": 23.96694,
+    "altitude_msl_ft": 1044.87,
+    "altitude_agl_ft": 0.68
+  },
+  "altitude_msl_ft": {
+    "min": 1041.37,
+    "max": 1527.36,
+    "peak_agl_ft": 481.43
+  },
+  "airspeed_kias": {
+    "min": -21.0,
+    "max": 112.65
+  },
+  "groundspeed_kt": {
+    "min": 0.0,
+    "max": 115.13
+  },
+  "peak_altitude_point": {
+    "time_sec": 87.101,
+    "latitude": 49.80588,
+    "longitude": 23.96679,
+    "altitude_msl_ft": 1527.36,
+    "altitude_agl_ft": 481.43
+  }
+}

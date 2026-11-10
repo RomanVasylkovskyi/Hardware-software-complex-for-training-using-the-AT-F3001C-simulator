@@ -1,0 +1,81 @@
+services:
+  telemetry-service:
+    build:
+      context: ./services/telemetry-service
+    container_name: sim-telemetry-service
+    restart: unless-stopped
+    ports:
+      - "${XPLANE_UDP_PORT:-49000}:49000/udp"
+      - "${TELEMETRY_PORT:-8001}:8001"
+    environment:
+      - PORT=8001
+      - XPLANE_UDP_PORT=49000
+      - BROADCAST_RATE_HZ=${BROADCAST_RATE_HZ:-25}
+      - AIRPORT_ICAO=${AIRPORT_ICAO:-UKLL}
+      - RUNWAY_IDENT=${RUNWAY_IDENT:-13}
+    volumes:
+      - ./data:/app/data:ro
+    networks:
+      - sim-network
+
+  vision-service:
+    build:
+      context: ./services/vision-service
+    container_name: sim-vision-service
+    restart: unless-stopped
+    ports:
+      - "${VISION_PORT:-8002}:8002"
+    environment:
+      - PORT=8002
+    networks:
+      - sim-network
+
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+    container_name: sim-analytics-service
+    restart: unless-stopped
+    ports:
+      - "${ANALYTICS_PORT:-8003}:8003"
+    environment:
+      - PORT=8003
+      - AIRPORT_ICAO=${AIRPORT_ICAO:-UKLL}
+      - RUNWAY_IDENT=${RUNWAY_IDENT:-13}
+    volumes:
+      - ./data:/app/data:ro
+    networks:
+      - sim-network
+
+  gateway-service:
+    build:
+      context: .
+      dockerfile: services/gateway-service/Dockerfile
+    container_name: sim-gateway-service
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-8000}:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - TELEMETRY_WS_URL=ws://telemetry-service:8001/ws/telemetry
+      - TELEMETRY_HTTP_URL=http://telemetry-service:8001
+      - VISION_WS_URL=ws://vision-service:8002/ws/vision
+      - VISION_HTTP_URL=http://vision-service:8002
+      - ANALYTICS_WS_URL=ws://analytics-service:8003/ws/analytics
+      - ANALYTICS_HTTP_URL=http://analytics-service:8003
+      - BROADCAST_RATE_HZ=${BROADCAST_RATE_HZ:-25}
+      - AIRPORT_ICAO=${AIRPORT_ICAO:-UKLL}
+      - RUNWAY_IDENT=${RUNWAY_IDENT:-13}
+    volumes:
+      - ./clients/instructor-panel:/app/clients/instructor-panel:ro
+    depends_on:
+      - telemetry-service
+      - vision-service
+      - analytics-service
+    networks:
+      - sim-network
+
+networks:
+  sim-network:
+    driver: bridge
+    name: at_f3001c_sim_network
