@@ -104,6 +104,11 @@ class TelemetryUDPProtocol(asyncio.DatagramProtocol):
 
     def datagram_received(self, data: bytes, addr: tuple) -> None:
         """Invoked immediately on every incoming UDP datagram."""
+        # CRITICAL: If Replay mode is active, live UDP packets MUST be ignored.
+        # This prevents packet collision and violent gauge flickering between simulator and replay file.
+        if self.parser.replay_mode or (replayer and replayer.is_running):
+            return
+
         snapshot, err = self.parser.process_packet(data)
         if err:
             logger.warning(f"UDP packet parse error from {addr}: {err}")
@@ -145,6 +150,7 @@ async def watchdog_loop() -> None:
                 telemetry_parser.replay_progress_pct = replayer.progress_pct
             else:
                 telemetry_parser.replay_mode = settings.replay_mode
+                telemetry_parser.replay_progress_pct = None
 
             telemetry_parser.check_staleness()
             await asyncio.sleep(0.1)  # 10 Hz check
@@ -369,41 +375,22 @@ async def start_replay(req: Optional[ReplayControlRequest] = None) -> dict:
     speed = req.speed if (req and req.speed) else 1.0
     loop = req.loop if (req and req.loop is not None) else True
 
-    # If replayer is running, check if we need to switch file or restart
+    # Stop any active replay first to ensure clean state and avoid overlapping replays
     if replayer and replayer.is_running:
-        file_changed = req_file and (req_file != replayer.file_path_str and Path(req_file).name != Path(replayer.file_path_str or "").name)
-        if file_changed or (req and req.action == "restart"):
-            replayer.stop()
-            replayer = None
-        else:
-            if req and req.speed is not None:
-                replayer.set_speed(req.speed)
-            if req and req.loop is not None:
-                replayer.loop = req.loop
-            return {
-                "status": "already_running",
-                "progress_pct": replayer.progress_pct,
-                "current_index": replayer.current_index,
-                "total_records": replayer.total_records,
-                "speed": replayer.speed_multiplier,
-                "loop": replayer.loop,
-                "file_name": Path(replayer.file_path_str or "").name,
-            }
+        replayer.stop()
+        replayer = None
 
-    if replayer is None:
-        replayer = FlightDataReplayer(
-            file_path=req_file or settings.replay_file_path,
-            target_host="127.0.0.1",
-            target_port=settings.udp_port,
-            speed_multiplier=speed,
-            loop=loop,
-        )
-    else:
-        replayer.speed_multiplier = speed
-        replayer.loop = loop
+    replayer = FlightDataReplayer(
+        file_path=req_file or settings.replay_file_path,
+        target_host="127.0.0.1",
+        target_port=settings.udp_port,
+        speed_multiplier=speed,
+        loop=loop,
+    )
 
     try:
         telemetry_parser.replay_mode = True
+        telemetry_parser.reset()
         await replayer.start(
             direct_callback=lambda pkt: telemetry_parser.process_packet(pkt)
         )
@@ -421,11 +408,13 @@ async def start_replay(req: Optional[ReplayControlRequest] = None) -> dict:
 
 @app.post("/replay/stop", tags=["Replay"])
 async def stop_replay() -> dict:
-    """Stop active flight data replay."""
+    """Stop active flight data replay and switch back to live X-Plane UDP ingestion."""
     global replayer
     if replayer and replayer.is_running:
         replayer.stop()
+        replayer = None
     telemetry_parser.replay_mode = False
+    telemetry_parser.reset()
     return {"status": "stopped", "mode": "idle"}
 
 
@@ -435,7 +424,9 @@ async def switch_to_live_mode() -> dict:
     global replayer
     if replayer and replayer.is_running:
         replayer.stop()
+        replayer = None
     telemetry_parser.replay_mode = False
+    telemetry_parser.reset()
     return {
         "status": "live_mode_active",
         "message": "Switched to live X-Plane 11 UDP mode",
@@ -505,6 +496,7 @@ async def upload_flight_file(
 
         try:
             telemetry_parser.replay_mode = True
+            telemetry_parser.reset()
             await replayer.start(
                 direct_callback=lambda pkt: telemetry_parser.process_packet(pkt)
             )

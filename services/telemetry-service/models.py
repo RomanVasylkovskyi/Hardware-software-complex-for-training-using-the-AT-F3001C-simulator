@@ -157,7 +157,7 @@ class TelemetrySnapshot(BaseModel):
 
 class ReplayControlRequest(BaseModel):
     """Payload to control the flight replay engine."""
-    action: str = Field(..., description="Action to perform: 'start', 'stop', 'restart', 'set_speed'")
+    action: str = Field("start", description="Action to perform: 'start', 'stop', 'restart', 'set_speed'")
     speed: Optional[float] = Field(None, description="Playback speed multiplier (e.g. 1.0, 2.0, 0.5)")
     loop: Optional[bool] = Field(None, description="Whether to loop the dataset continuously")
     file_path: Optional[str] = Field(None, description="Optional custom path to flight data file")

@@ -22,7 +22,7 @@ class TelemetrySettingsManager {
     // State
     this.currentMode = 'live'; // 'live' or 'replay'
     this.selectedMode = 'live';
-    this.userHasChangedDropdown = false;
+    this.currentReplaySource = null; // 'server' | 'local' | null
     this.isReplayRunning = false;
     this.serverSpeed = 1.0;
     this.serverLoop = true;
@@ -41,17 +41,7 @@ class TelemetrySettingsManager {
     // Mode Dropdown Switcher
     if (this.modeSelect) {
       this.modeSelect.addEventListener('change', (e) => {
-        this.userHasChangedDropdown = true;
         this.switchMode(e.target.value, true);
-      });
-    }
-
-    // --- MODE 1: Live Controls ---
-    const btnActivateLive = document.getElementById('btn-activate-live');
-    if (btnActivateLive) {
-      btnActivateLive.addEventListener('click', () => {
-        this.userHasChangedDropdown = true;
-        this.switchMode('live', true);
       });
     }
 
@@ -209,23 +199,21 @@ class TelemetrySettingsManager {
 
     if (fromUser) {
       if (modeId === 'live') {
+        // Explicitly switch to Live UDP mode: stop any active replay immediately
         this.activateLiveMode();
       } else if (modeId === 'server-file') {
-        if (this.currentMode === 'live' || (this.isReplayRunning && this.selectedLocalFile)) {
+        // If local file replay was running, stop it when user intentionally switches to server file mode
+        if (this.isReplayRunning && this.currentReplaySource === 'local') {
           this.stopReplay();
         }
-        this.currentMode = 'replay';
-        this.updateHeaderBadge('REPLAY (СЕРВЕР)');
-        this.updateBadgeDisplay('ОЧІКУВАННЯ РЕПЛЕЮ (СЕРВЕР)', 'mode-badge-replay');
       } else if (modeId === 'local-file') {
-        if (this.currentMode === 'live' || (this.isReplayRunning && !this.selectedLocalFile)) {
+        // If server file replay was running, stop it when user intentionally switches to local file mode
+        if (this.isReplayRunning && this.currentReplaySource === 'server') {
           this.stopReplay();
         }
-        this.currentMode = 'replay';
-        this.updateHeaderBadge('REPLAY (ЛОКАЛЬНИЙ ФАЙЛ)');
-        this.updateBadgeDisplay('ОЧІКУВАННЯ ФАЙЛУ (ПК)', 'mode-badge-replay');
       }
     }
+    this.updateControlsState();
   }
 
   updateHeaderBadge(text, isLive = false) {
@@ -248,6 +236,12 @@ class TelemetrySettingsManager {
       if (res.ok) {
         const data = await res.json();
         this.updateStatusUI(data);
+        if (data.is_running) {
+          const isLocal = Boolean(data.is_local || (data.file_name && data.file_name.startsWith('upload_')));
+          this.switchMode(isLocal ? 'local-file' : 'server-file', false);
+        } else {
+          this.switchMode('live', false);
+        }
       }
     } catch (e) {
       console.warn('[Settings] Failed to fetch initial status:', e);
@@ -319,16 +313,30 @@ class TelemetrySettingsManager {
   updateStatusUI(data) {
     if (!data) return;
 
-    this.currentMode = data.mode || (data.is_running ? 'replay' : 'live');
     this.isReplayRunning = Boolean(data.is_running);
+    this.currentMode = this.isReplayRunning ? 'replay' : 'live';
 
-    const isLiveActive = (data.connection === 'CONNECTED' || data.connection === 'ONLINE') &&
+    const isLocal = Boolean(
+      data.is_local ||
+      (data.file_name && (data.file_name.startsWith('upload_') || data.file_name.includes('upload'))) ||
+      (this.selectedLocalFile && data.file_name === this.selectedLocalFile.name) ||
+      (this.isReplayRunning && this.currentReplaySource === 'local')
+    );
+
+    if (this.isReplayRunning) {
+      this.currentReplaySource = isLocal ? 'local' : 'server';
+    } else {
+      this.currentReplaySource = null;
+    }
+
+    const isLiveActive = !this.isReplayRunning &&
+      (data.connection === 'CONNECTED' || data.connection === 'ONLINE') &&
       ((data.packet_rate_hz || 0) > 0 || (data.packets_received || 0) > 0) &&
       (data.time_since_last_packet_sec === undefined || data.time_since_last_packet_sec < 4.0);
 
     // Update Header Pill
     if (this.headerBadge) {
-      if (this.currentMode === 'replay' && this.isReplayRunning) {
+      if (this.isReplayRunning) {
         this.headerBadge.className = 'source-mode-tag replay';
         const name = data.file_name || 'REPLAY';
         this.headerBadge.innerText = `REPLAY: ${name}`;
@@ -344,9 +352,11 @@ class TelemetrySettingsManager {
     // Update Mode Badge in Settings Header
     const footerMode = document.getElementById('settings-active-mode-badge');
     if (footerMode) {
-      if (this.currentMode === 'replay' && this.isReplayRunning) {
+      if (this.isReplayRunning) {
         footerMode.className = 'mode-badge-replay';
-        footerMode.innerText = `РЕПЛЕЙ (${data.file_name || 'ФАЙЛ'})`;
+        footerMode.innerText = this.currentReplaySource === 'local'
+          ? `РЕПЛЕЙ (ЛОКАЛЬНИЙ: ${data.file_name || 'ФАЙЛ'})`
+          : `РЕПЛЕЙ (СЕРВЕР: ${data.file_name || 'ФАЙЛ'})`;
       } else if (isLiveActive) {
         footerMode.className = 'mode-badge-live';
         footerMode.innerText = 'ОНЛАЙН (UDP СИМУЛЯТОР)';
@@ -364,7 +374,9 @@ class TelemetrySettingsManager {
     if (liveStatus) {
       if (this.isReplayRunning) {
         liveStatus.className = 'flat-val badge-idle';
-        liveStatus.innerText = 'РЕЖИМ РЕПЛЕЮ';
+        liveStatus.innerText = this.currentReplaySource === 'local'
+          ? 'НЕАКТИВНИЙ (ПРАЦЮЄ ЛОКАЛЬНИЙ РЕПЛЕЙ)'
+          : 'НЕАКТИВНИЙ (ПРАЦЮЄ РЕПЛЕЙ З СЕРВЕРА)';
       } else if (isLiveActive) {
         liveStatus.className = 'flat-val badge-connected';
         liveStatus.innerText = 'АКТИВНИЙ ПОТІК (ПІДКЛЮЧЕНО)';
@@ -388,7 +400,6 @@ class TelemetrySettingsManager {
     const serverState = document.getElementById('server-replay-state');
 
     const pct = typeof data.progress_pct === 'number' ? data.progress_pct : 0.0;
-    const isLocal = Boolean(data.is_local || (data.file_name && data.file_name.startsWith('upload_')) || (this.selectedLocalFile && data.file_name === this.selectedLocalFile.name));
 
     if (serverPct) {
       serverPct.innerText = (this.isReplayRunning && !isLocal) ? `${pct.toFixed(1)}%` : 'nodata';
@@ -403,6 +414,9 @@ class TelemetrySettingsManager {
       if (this.isReplayRunning && !isLocal) {
         serverState.innerText = `СТАТУС: ВІДТВОРЕННЯ (${data.speed || 1}x, ${data.loop ? 'LOOP' : 'ONCE'})`;
         serverState.style.color = 'var(--avionics-cyan)';
+      } else if (this.isReplayRunning && isLocal) {
+        serverState.innerText = 'НЕАКТИВНИЙ (ПРАЦЮЄ ЛОКАЛЬНИЙ РЕПЛЕЙ)';
+        serverState.style.color = '#94a3b8';
       } else {
         serverState.innerText = 'nodata';
         serverState.style.color = '#94a3b8';
@@ -428,21 +442,16 @@ class TelemetrySettingsManager {
       if (this.isReplayRunning && isLocal) {
         localState.innerText = `СТАТУС: ВІДТВОРЕННЯ (${data.speed || 1}x, ${data.loop ? 'LOOP' : 'ONCE'})`;
         localState.style.color = 'var(--avionics-cyan)';
+      } else if (this.isReplayRunning && !isLocal) {
+        localState.innerText = 'НЕАКТИВНИЙ (ПРАЦЮЄ РЕПЛЕЙ З СЕРВЕРА)';
+        localState.style.color = '#94a3b8';
       } else {
         localState.innerText = 'nodata';
         localState.style.color = '#94a3b8';
       }
     }
 
-    // Determine active mode in system
-    let systemMode = 'live';
-    if (this.currentMode === 'replay' && this.isReplayRunning) {
-      systemMode = isLocal ? 'local-file' : 'server-file';
-    }
-
-    if (this.isReplayRunning || !this.userHasChangedDropdown) {
-      this.switchMode(systemMode, false);
-    }
+    this.updateControlsState();
   }
 
   // Real-time update from incoming WebSocket telemetry snapshot
@@ -451,14 +460,17 @@ class TelemetrySettingsManager {
     const st = telemetry.status;
 
     const isReplay = Boolean(st.replay_mode);
+    this.isReplayRunning = isReplay;
+    this.currentMode = isReplay ? 'replay' : 'live';
+    if (!isReplay) {
+      this.currentReplaySource = null;
+    }
+
     const isLive = !isReplay && (st.connection === 'CONNECTED' || st.connection === 'ONLINE') &&
       ((st.packet_rate_hz || 0) > 0 || (st.packets_received || 0) > 0) &&
       (st.time_since_last_packet_sec === undefined || st.time_since_last_packet_sec < 4.0);
 
-    this.currentMode = isReplay ? 'replay' : 'live';
-    this.isReplayRunning = isReplay;
-
-    // Header badge synchronization (if header badge element exists)
+    // Header badge synchronization
     if (this.headerBadge) {
       if (isReplay) {
         this.headerBadge.className = 'source-mode-tag replay';
@@ -481,7 +493,9 @@ class TelemetrySettingsManager {
     if (footerMode) {
       if (isReplay) {
         footerMode.className = 'mode-badge-replay';
-        footerMode.innerText = `РЕПЛЕЙ (${st.replay_file || 'ФАЙЛ'})`;
+        footerMode.innerText = this.currentReplaySource === 'local'
+          ? `РЕПЛЕЙ (ЛОКАЛЬНИЙ: ${st.replay_file || 'ФАЙЛ'})`
+          : `РЕПЛЕЙ (СЕРВЕР: ${st.replay_file || 'ФАЙЛ'})`;
       } else if (isLive) {
         footerMode.className = 'mode-badge-live';
         footerMode.innerText = 'ОНЛАЙН (UDP СИМУЛЯТОР)';
@@ -498,7 +512,9 @@ class TelemetrySettingsManager {
     if (liveStatus) {
       if (isReplay) {
         liveStatus.className = 'flat-val badge-idle';
-        liveStatus.innerText = 'РЕЖИМ РЕПЛЕЮ';
+        liveStatus.innerText = this.currentReplaySource === 'local'
+          ? 'НЕАКТИВНИЙ (ПРАЦЮЄ ЛОКАЛЬНИЙ РЕПЛЕЙ)'
+          : 'НЕАКТИВНИЙ (ПРАЦЮЄ РЕПЛЕЙ З СЕРВЕРА)';
       } else if (isLive) {
         liveStatus.className = 'flat-val badge-connected';
         liveStatus.innerText = 'АКТИВНИЙ ПОТІК (ПІДКЛЮЧЕНО)';
@@ -522,30 +538,87 @@ class TelemetrySettingsManager {
     const localFill = document.getElementById('local-replay-fill');
 
     if (isReplay) {
-      if (serverPct) serverPct.innerText = `${pct.toFixed(1)}%`;
-      if (serverFill) serverFill.style.width = `${pct}%`;
-      if (localPct) localPct.innerText = `${pct.toFixed(1)}%`;
-      if (localFill) localFill.style.width = `${pct}%`;
+      if (this.currentReplaySource !== 'local') {
+        if (serverPct) serverPct.innerText = `${pct.toFixed(1)}%`;
+        if (serverFill) serverFill.style.width = `${pct}%`;
+      } else {
+        if (localPct) localPct.innerText = `${pct.toFixed(1)}%`;
+        if (localFill) localFill.style.width = `${pct}%`;
+      }
+    }
+
+    this.updateControlsState();
+  }
+
+  updateControlsState() {
+    const btnStartServer = document.getElementById('btn-start-server-replay');
+    const btnStopServer = document.getElementById('btn-stop-server-replay');
+    const btnUpload = document.getElementById('btn-upload-and-play');
+    const btnStopLocal = document.getElementById('btn-stop-local-replay');
+
+    if (!this.isReplayRunning) {
+      // Live UDP is active: all replay start buttons ready, stop buttons disabled
+      if (btnStartServer) {
+        btnStartServer.disabled = false;
+        btnStartServer.innerHTML = '&#9654; ЗАПУСТИТИ РЕПЛЕЙ З СЕРВЕРА';
+      }
+      if (btnStopServer) {
+        btnStopServer.disabled = true;
+      }
+      if (btnUpload) {
+        btnUpload.disabled = !this.selectedLocalFile;
+      }
+      if (btnStopLocal) {
+        btnStopLocal.disabled = true;
+      }
+    } else if (this.currentReplaySource === 'server') {
+      // Server Replay is active: start button disabled, stop enabled; local stop disabled
+      if (btnStartServer) {
+        btnStartServer.disabled = true;
+        btnStartServer.innerHTML = '&#10003; ВІДТВОРЕННЯ АКТИВНЕ';
+      }
+      if (btnStopServer) {
+        btnStopServer.disabled = false;
+      }
+      if (btnUpload) {
+        btnUpload.disabled = !this.selectedLocalFile;
+      }
+      if (btnStopLocal) {
+        btnStopLocal.disabled = true;
+      }
+    } else if (this.currentReplaySource === 'local') {
+      // Local Replay is active: local stop enabled; server stop disabled, server start available to switch
+      if (btnStartServer) {
+        btnStartServer.disabled = false;
+        btnStartServer.innerHTML = '&#9654; ЗАПУСТИТИ РЕПЛЕЙ З СЕРВЕРА';
+      }
+      if (btnStopServer) {
+        btnStopServer.disabled = true;
+      }
+      if (btnUpload) {
+        btnUpload.disabled = true;
+      }
+      if (btnStopLocal) {
+        btnStopLocal.disabled = false;
+      }
     }
   }
 
   async activateLiveMode() {
-    const btn = document.getElementById('btn-activate-live');
-    if (btn) btn.disabled = true;
-
     try {
       const res = await fetch('/api/mode/live', { method: 'POST' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      this.userHasChangedDropdown = false;
-      this.showToast('Увімкнено онлайн режим прийому з X-Plane 11 UDP (0.0.0.0:49005/49000)', 'success');
+      this.currentMode = 'live';
+      this.isReplayRunning = false;
+      this.currentReplaySource = null;
+      this.updateControlsState();
+      this.showToast('Увімкнено онлайн режим прийому з X-Plane 11 UDP', 'success');
       this.fetchReplayStatus();
     } catch (e) {
       console.error('[Settings] Error switching to live mode:', e);
       this.showToast('Помилка перемикання в онлайн режим', 'error');
-    } finally {
-      if (btn) btn.disabled = false;
     }
   }
 
@@ -562,6 +635,7 @@ class TelemetrySettingsManager {
     if (btn) btn.disabled = true;
 
     try {
+      this.currentReplaySource = 'server';
       const res = await fetch('/api/replay/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -576,14 +650,15 @@ class TelemetrySettingsManager {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      this.userHasChangedDropdown = false;
-      this.showToast(`Реплей файлу ${selectedFile} успішно запущено (${data.total_records || ''} рядків)`, 'success');
+      this.isReplayRunning = true;
+      this.updateControlsState();
+      this.showToast(`Реплей файлу ${selectedFile} запущено (всі інші джерела вимкнено)`, 'success');
       this.fetchReplayStatus();
     } catch (e) {
       console.error('[Settings] Error starting server replay:', e);
       this.showToast('Не вдалося запустити реплей з сервера', 'error');
-    } finally {
-      if (btn) btn.disabled = false;
+      this.currentReplaySource = null;
+      this.updateControlsState();
     }
   }
 
@@ -591,7 +666,11 @@ class TelemetrySettingsManager {
     try {
       const res = await fetch('/api/replay/stop', { method: 'POST' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      this.showToast('Відтворення зупинено', 'info');
+      this.isReplayRunning = false;
+      this.currentReplaySource = null;
+      this.currentMode = 'live';
+      this.updateControlsState();
+      this.showToast('Відтворення зупинено. Повернення до онлайн UDP', 'info');
       this.fetchReplayStatus();
     } catch (e) {
       console.error('[Settings] Error stopping replay:', e);
@@ -651,6 +730,7 @@ class TelemetrySettingsManager {
     }
 
     try {
+      this.currentReplaySource = 'local';
       const formData = new FormData();
       formData.append('file', this.selectedLocalFile);
       formData.append('start_immediately', 'true');
@@ -665,29 +745,30 @@ class TelemetrySettingsManager {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      this.userHasChangedDropdown = false;
-      this.showToast(`Файл успішно завантажено! Реплей розпочато (${data.total_records || 0} записів)`, 'success');
+      this.isReplayRunning = true;
+      this.updateControlsState();
+      this.showToast(`Файл завантажено! Реплей розпочато (всі інші джерела вимкнено)`, 'success');
       this.fetchReplayStatus();
-      this.fetchServerFiles(); // Refresh file list to show newly uploaded file
+      this.fetchServerFiles();
     } catch (e) {
       console.error('[Settings] Error uploading local file:', e);
       this.showToast('Помилка завантаження файлу на сервер', 'error');
+      this.currentReplaySource = null;
+      this.updateControlsState();
     } finally {
       if (btn) {
-        btn.disabled = false;
         btn.innerHTML = '&#11014; ЗАВАНТАЖИТИ ТА ЗАПУСТИТИ РЕПЛЕЙ';
+        this.updateControlsState();
       }
     }
   }
 
   showToast(message, type = 'info') {
-    // If global alerts manager has toast support, display toast
     if (window.app && window.app.alerts && typeof window.app.alerts.showToast === 'function') {
       window.app.alerts.showToast(message, type);
       return;
     }
 
-    // Fallback toast alert
     const toast = document.createElement('div');
     toast.className = `settings-toast ${type}`;
     toast.innerText = message;
