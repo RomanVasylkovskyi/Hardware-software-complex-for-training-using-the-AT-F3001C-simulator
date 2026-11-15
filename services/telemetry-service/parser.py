@@ -268,7 +268,7 @@ class TelemetryParser:
                     errors_copy.append(msg)
         elif time_since_last_packet is not None and time_since_last_packet > self.offline_timeout_sec:
             conn_status = ConnectionStatus.OFFLINE
-            msg = f"Simulator connection lost (no packets for {time_since_last_packet:.1f}s)"
+            msg = "Simulator connection lost"
             if msg not in errors_copy:
                 errors_copy.append(msg)
         elif time_since_last_packet is not None and time_since_last_packet > self.stale_timeout_sec:

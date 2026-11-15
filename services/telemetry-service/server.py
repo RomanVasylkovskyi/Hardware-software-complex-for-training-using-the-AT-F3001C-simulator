@@ -14,8 +14,9 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import json
 import logging
-from typing import List, Optional, Set
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -286,6 +287,77 @@ async def get_simulator_status() -> SimulatorStatus:
     return snapshot.status
 
 
+@app.get("/replay/status", tags=["Replay"])
+async def get_replay_status() -> dict:
+    """Get active replay engine status and progress."""
+    global replayer
+    is_running = bool(replayer and replayer.is_running)
+    file_name = Path(replayer.file_path_str).name if (replayer and replayer.file_path_str) else None
+    snapshot = telemetry_parser.check_staleness()
+
+    return {
+        "mode": "replay" if telemetry_parser.replay_mode else "live",
+        "is_running": is_running,
+        "file_name": file_name,
+        "file_path": replayer.file_path_str if replayer else None,
+        "current_index": replayer.current_index if replayer else 0,
+        "total_records": replayer.total_records if replayer else 0,
+        "progress_pct": replayer.progress_pct if replayer else 0.0,
+        "speed": replayer.speed_multiplier if replayer else 1.0,
+        "loop": replayer.loop if replayer else True,
+        "packets_received": snapshot.status.packets_received,
+        "packet_rate_hz": snapshot.status.packet_rate_hz,
+        "connection": snapshot.status.connection.value if hasattr(snapshot.status.connection, "value") else str(snapshot.status.connection),
+    }
+
+
+@app.get("/replay/files", tags=["Replay"])
+async def list_replay_files() -> dict:
+    """List available authentic flight recordings stored on server."""
+    files_list = []
+    seen_names = set()
+
+    search_dirs = [
+        (Path("/app/data"), "server", "Сервер симулятора"),
+        (Path("/app/uploads"), "uploaded", "Завантажено користувачем"),
+        (Path(__file__).resolve().parent.parent.parent / "data", "server", "Дані комплексу"),
+        (Path(__file__).resolve().parent / "data", "server", "Локальні дані"),
+    ]
+
+    for search_dir, source, desc_prefix in search_dirs:
+        if not search_dir.is_dir():
+            continue
+        try:
+            for p in sorted(search_dir.iterdir(), key=lambda x: x.name):
+                if p.is_file() and p.suffix.lower() in (".csv", ".txt") and p.name not in seen_names:
+                    seen_names.add(p.name)
+                    size_b = p.stat().st_size
+                    if size_b >= 1024 * 1024:
+                        size_str = f"{size_b / (1024 * 1024):.1f} MB"
+                    else:
+                        size_str = f"{max(1, round(size_b / 1024))} KB"
+
+                    desc = f"{desc_prefix}: {p.name} ({size_str})"
+                    if p.name == "telemetry_essential.csv":
+                        desc = f"Базовий тренувальний політ Cessna 172SP (UKLL RWY 13, {size_str})"
+                    elif p.name == "Data.txt":
+                        desc = f"Повний первинний лог польоту X-Plane 11 Data.txt ({size_str})"
+
+                    files_list.append({
+                        "filename": p.name,
+                        "path": str(p),
+                        "size_bytes": size_b,
+                        "size_formatted": size_str,
+                        "type": p.suffix.lower().replace(".", ""),
+                        "source": source,
+                        "description": desc,
+                    })
+        except Exception as e:
+            logger.warning(f"Error scanning {search_dir}: {e}")
+
+    return {"files": files_list}
+
+
 @app.post("/replay/start", tags=["Replay"])
 async def start_replay(req: Optional[ReplayControlRequest] = None) -> dict:
     """
@@ -293,23 +365,42 @@ async def start_replay(req: Optional[ReplayControlRequest] = None) -> dict:
     Never uses fake data; loads verified flight recordings.
     """
     global replayer
+    req_file = req.file_path if (req and req.file_path) else None
+    speed = req.speed if (req and req.speed) else 1.0
+    loop = req.loop if (req and req.loop is not None) else True
+
+    # If replayer is running, check if we need to switch file or restart
+    if replayer and replayer.is_running:
+        file_changed = req_file and (req_file != replayer.file_path_str and Path(req_file).name != Path(replayer.file_path_str or "").name)
+        if file_changed or (req and req.action == "restart"):
+            replayer.stop()
+            replayer = None
+        else:
+            if req and req.speed is not None:
+                replayer.set_speed(req.speed)
+            if req and req.loop is not None:
+                replayer.loop = req.loop
+            return {
+                "status": "already_running",
+                "progress_pct": replayer.progress_pct,
+                "current_index": replayer.current_index,
+                "total_records": replayer.total_records,
+                "speed": replayer.speed_multiplier,
+                "loop": replayer.loop,
+                "file_name": Path(replayer.file_path_str or "").name,
+            }
+
     if replayer is None:
         replayer = FlightDataReplayer(
-            file_path=req.file_path if req and req.file_path else settings.replay_file_path,
+            file_path=req_file or settings.replay_file_path,
             target_host="127.0.0.1",
             target_port=settings.udp_port,
-            speed_multiplier=req.speed if req and req.speed else settings.replay_speed,
-            loop=req.loop if req and req.loop is not None else settings.replay_loop,
+            speed_multiplier=speed,
+            loop=loop,
         )
-
-    if req:
-        if req.speed is not None:
-            replayer.set_speed(req.speed)
-        if req.loop is not None:
-            replayer.loop = req.loop
-
-    if replayer.is_running:
-        return {"status": "already_running", "progress_pct": replayer.progress_pct}
+    else:
+        replayer.speed_multiplier = speed
+        replayer.loop = loop
 
     try:
         telemetry_parser.replay_mode = True
@@ -318,6 +409,7 @@ async def start_replay(req: Optional[ReplayControlRequest] = None) -> dict:
         )
         return {
             "status": "started",
+            "file_name": Path(replayer.file_path_str or "").name,
             "total_records": replayer.total_records,
             "speed": replayer.speed_multiplier,
             "loop": replayer.loop,
@@ -330,11 +422,102 @@ async def start_replay(req: Optional[ReplayControlRequest] = None) -> dict:
 @app.post("/replay/stop", tags=["Replay"])
 async def stop_replay() -> dict:
     """Stop active flight data replay."""
+    global replayer
     if replayer and replayer.is_running:
         replayer.stop()
-        telemetry_parser.replay_mode = False
-        return {"status": "stopped"}
-    return {"status": "not_running"}
+    telemetry_parser.replay_mode = False
+    return {"status": "stopped", "mode": "idle"}
+
+
+@app.post("/telemetry/mode/live", tags=["Telemetry"])
+async def switch_to_live_mode() -> dict:
+    """Stop any active replay and switch directly to live X-Plane UDP ingestion."""
+    global replayer
+    if replayer and replayer.is_running:
+        replayer.stop()
+    telemetry_parser.replay_mode = False
+    return {
+        "status": "live_mode_active",
+        "message": "Switched to live X-Plane 11 UDP mode",
+        "udp_host": settings.udp_host,
+        "udp_port": settings.udp_port,
+    }
+
+
+@app.post("/replay/upload", tags=["Replay"])
+async def upload_flight_file(
+    file: UploadFile = File(...),
+    start_immediately: bool = Form(True),
+    speed: float = Form(1.0),
+    loop: bool = Form(True),
+) -> dict:
+    """
+    Upload a flight recording from user's PC (.csv or .txt) and optionally start replay immediately.
+    """
+    global replayer
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename missing")
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in (".csv", ".txt"):
+        raise HTTPException(status_code=400, detail="Only .csv and .txt flight recordings are supported")
+
+    upload_dir = Path("/app/uploads")
+    try:
+        upload_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        upload_dir = Path("/tmp/uploads")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_name = "".join(c for c in file.filename if c.isalnum() or c in "._- ")
+    dest_path = upload_dir / safe_name
+
+    contents = await file.read()
+    if len(contents) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    dest_path.write_bytes(contents)
+    logger.info(f"Uploaded flight recording saved to {dest_path} ({len(contents)} bytes)")
+
+    size_b = len(contents)
+    size_str = f"{size_b / (1024 * 1024):.1f} MB" if size_b >= 1024 * 1024 else f"{max(1, round(size_b / 1024))} KB"
+
+    result = {
+        "status": "uploaded",
+        "file_name": safe_name,
+        "file_path": str(dest_path),
+        "size_bytes": size_b,
+        "size_formatted": size_str,
+    }
+
+    if start_immediately:
+        if replayer and replayer.is_running:
+            replayer.stop()
+            replayer = None
+
+        replayer = FlightDataReplayer(
+            file_path=str(dest_path),
+            target_host="127.0.0.1",
+            target_port=settings.udp_port,
+            speed_multiplier=speed,
+            loop=loop,
+        )
+
+        try:
+            telemetry_parser.replay_mode = True
+            await replayer.start(
+                direct_callback=lambda pkt: telemetry_parser.process_packet(pkt)
+            )
+            result["replay_started"] = True
+            result["total_records"] = replayer.total_records
+            result["speed"] = replayer.speed_multiplier
+            result["loop"] = replayer.loop
+        except Exception as e:
+            logger.error(f"Failed to start replay for uploaded file: {e}")
+            result["replay_started"] = False
+            result["error"] = str(e)
+
+    return result
 
 
 @app.websocket("/ws/telemetry")

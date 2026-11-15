@@ -29,6 +29,7 @@ class InstructorPanelApp {
     const engContainerId = document.getElementById('view-eis') ? 'view-eis' : 'engine-panel';
     this.engine = new EngineInstrumentsPanel(engContainerId);
     this.alerts = new AlertsAndScoringManager();
+    this.settingsManager = typeof TelemetrySettingsManager !== 'undefined' ? new TelemetrySettingsManager() : null;
 
     // Standby Analog Gauges (if mounted on dashboard)
     if (document.getElementById('gauge-airspeed-dash')) {
@@ -212,7 +213,7 @@ class InstructorPanelApp {
   }
 
   setView(viewName) {
-    const validViews = ['all', 'pfd', 'nd', 'standby', 'engine', 'safety'];
+    const validViews = ['all', 'pfd', 'nd', 'standby', 'engine', 'safety', 'settings'];
     if (!validViews.includes(viewName)) viewName = 'all';
 
     this.activeView = viewName;
@@ -225,6 +226,11 @@ class InstructorPanelApp {
     // 2. Set body mode class for full-screen view layout
     validViews.forEach(v => document.body.classList.remove(`mode-${v}`));
     document.body.classList.add(`mode-${viewName}`);
+
+    // Notify settings manager if active
+    if (viewName === 'settings' && this.settingsManager) {
+      this.settingsManager.onViewActivated();
+    }
 
     // 3. For engine / standby sub-views inside card-engine
     const viewEis = document.getElementById('view-eis');
@@ -388,6 +394,11 @@ class InstructorPanelApp {
 
     // Master Warning / Caution & Annunciator Bar always updates
     this.alerts.update(payload.analytics, payload.telemetry, isAnalyticsOnline);
+
+    // Sync Telemetry Source & Replay Progress
+    if (this.settingsManager && payload.telemetry) {
+      this.settingsManager.updateFromTelemetry(payload.telemetry);
+    }
 
     // RESOURCE OPTIMIZATION (Економія ресурсів):
     // Only execute heavy DOM, Canvas, and Leaflet redraws for the ACTIVE section!

@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css?v=3" />
   
   <!-- Custom Avionics CSS -->
-  <link rel="stylesheet" href="css/main.css?v=15" />
+  <link rel="stylesheet" href="css/main.css?v=22" />
 </head>
 <body>
   <!-- HEADER / SYSTEM STATUS BAR -->
@@ -32,26 +32,8 @@
       <button class="nav-tab-btn" data-view="standby" title="Резервні дублюючі прилади">ДУБЛЮЮЧІ</button>
       <button class="nav-tab-btn" data-view="engine" title="Контроль силової установки (EIS)">ДВИГУН (EIS)</button>
       <button class="nav-tab-btn" data-view="safety" title="Безпека польоту та глісада">БЕЗПЕКА</button>
+      <button class="nav-tab-btn" data-view="settings" id="btn-tab-settings" title="Налаштування джерела даних та реплею">НАЛАШТУВАННЯ</button>
     </nav>
-
-    <!-- Network & Microservice Diagnostics (Fixed Right) -->
-    <div class="stats-section">
-      <!-- Annunciator Status Badge -->
-      <div id="annunciator-banner" class="annunciator-container normal" title="Статус систем">
-        <span class="annunciator-normal">SYSTEMS NORMAL</span>
-      </div>
-
-      <div id="conn-status-badge" class="status-badge" style="background-color: #ef4444;">DISCONNECTED</div>
-      
-      <div class="metric-pill">RTT: <span id="stat-latency-val">-- ms</span></div>
-      <div class="metric-pill">RATE: <span id="stat-hz-val">-- Hz</span></div>
-
-      <div class="clock-group">
-        <div id="header-zulu-clock" style="font-weight:700;">00:00:00 Z</div>
-      </div>
-
-      <button id="btn-header-fullscreen" class="btn-ctrl" title="Повноекранний режим (F11)">FULLSCREEN</button>
-    </div>
   </header>
 
   <!-- Floating Toast Notifications Column (Pinned to Top-Right Corner) -->
@@ -67,10 +49,6 @@
         <div class="panel-title">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg>
           Primary Flight Display (PFD)
-        </div>
-        <div class="panel-controls">
-          <button class="btn-ctrl btn-switch-view" data-view="pfd" title="Розгорнути PFD на весь екран">РОЗГОРНУТИ</button>
-          <button class="btn-ctrl btn-fullscreen" data-target="card-pfd" title="Toggle Fullscreen">FULLSCREEN</button>
         </div>
       </div>
       <div class="panel-body">
@@ -96,8 +74,6 @@
           <button id="btn-nd-follow" class="btn-ctrl active">AUTO-PAN: ON</button>
           <button id="btn-nd-fit" class="btn-ctrl">FIT TRACK</button>
           <button id="btn-nd-reset" class="btn-ctrl">CLEAR TRACK</button>
-          <button class="btn-ctrl btn-switch-view" data-view="nd" title="Розгорнути карту ND на весь екран">РОЗГОРНУТИ</button>
-          <button class="btn-ctrl btn-fullscreen" data-target="card-nd" title="Toggle Fullscreen">FULLSCREEN</button>
         </div>
       </div>
       <div class="panel-body">
@@ -117,7 +93,6 @@
         <div class="panel-controls">
           <button id="tab-btn-eis" class="btn-ctrl active" title="Показати цифрові параметри двигуна EIS">ДВИГУН (EIS)</button>
           <button id="tab-btn-standby" class="btn-ctrl" title="Показати 6 дублюючих аналогових приладів (Basic Six)">ДУБЛЮЮЧІ ПРИЛАДИ (6)</button>
-          <button class="btn-ctrl btn-fullscreen" data-target="card-engine" title="Toggle Fullscreen">FULLSCREEN</button>
         </div>
       </div>
       <div class="panel-body">
@@ -284,8 +259,6 @@
         </div>
         <div class="panel-controls">
           <button id="btn-audio-mute" class="btn-ctrl">AUDIO: ON</button>
-          <button class="btn-ctrl btn-switch-view" data-view="safety" title="Розгорнути Безпеку на весь екран">РОЗГОРНУТИ</button>
-          <button class="btn-ctrl btn-fullscreen" data-target="card-analysis" title="Toggle Fullscreen">FULLSCREEN</button>
         </div>
       </div>
       <div class="panel-body">
@@ -336,56 +309,241 @@
         </div>
       </div>
     </div>
-  </main>
-
-  <!-- LANDING SCORE REPORT CARD MODAL -->
-  <div id="landing-report-modal" class="modal-overlay hidden">
-    <div class="modal-content">
-      <div class="modal-header">
-        <div class="modal-title">TOUCHDOWN &amp; LANDING REPORT CARD</div>
-        <button id="btn-close-report" class="btn-ctrl">&times;</button>
-      </div>
-
-      <div class="modal-score-box">
-        <div class="score-number" id="rpt-score-val">95 / 100</div>
-        <div class="score-grade" id="rpt-grade-val">EXCELLENT (GREASER)</div>
-      </div>
-
-      <div class="modal-metrics-grid">
-        <div class="metric-item">
-          <span style="color:#94a3b8;">TOUCHDOWN VS:</span>
-          <span id="rpt-vs-val" style="color:#22c55e;">-145 FPM</span>
+    <!-- PANEL 5: SETTINGS & REPLAY (FULL-PAGE AVIONICS WORKBENCH) -->
+    <div class="panel-card" id="card-settings">
+      <div class="panel-header">
+        <div class="panel-title" style="display:flex; align-items:center; gap:8px;">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+          </svg>
+          <span>НАЛАШТУВАННЯ ДЖЕРЕЛА ТЕЛЕМЕТРІЇ ТА РЕПЛЕЮ ПОЛЬОТІВ</span>
         </div>
-        <div class="metric-item">
-          <span style="color:#94a3b8;">IMPACT G-LOAD:</span>
-          <span id="rpt-g-val" style="color:#38bdf8;">1.15 G</span>
-        </div>
-        <div class="metric-item">
-          <span style="color:#94a3b8;">FLARE PITCH:</span>
-          <span id="rpt-pitch-val" style="color:#eab308;">+6.2°</span>
-        </div>
-        <div class="metric-item">
-          <span style="color:#94a3b8;">CENTERLINE DEV:</span>
-          <span id="rpt-centerline-val" style="color:#22c55e;">1.4 m</span>
+        <div class="panel-controls">
+          <div class="current-active-mode-pill">
+            АКТИВНИЙ РЕЖИМ: <span id="settings-active-mode-badge" class="mode-badge-live">ОНЛАЙН (UDP)</span>
+          </div>
         </div>
       </div>
 
-      <div class="modal-footer">
-        <button id="btn-reset-report" class="btn-primary">ACKNOWLEDGE &amp; RESET</button>
+      <div class="panel-body settings-page-body">
+        <!-- Sub-navigation Tabs -->
+        <div class="settings-page-nav">
+          <div class="settings-mode-tabs">
+            <button class="settings-tab-btn active" data-mode-tab="live">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
+              1. ОНЛАЙН (UDP СИМУЛЯТОР)
+            </button>
+            <button class="settings-tab-btn" data-mode-tab="server-file">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L11 13.17V7h2v6.17l2.59-2.58L17 12l-5 5z"/></svg>
+              2. ВІДТВОРЕННЯ З СЕРВЕРА
+            </button>
+            <button class="settings-tab-btn" data-mode-tab="local-file">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>
+              3. ЛОКАЛЬНИЙ ФАЙЛ З ПК (UPLOAD)
+            </button>
+          </div>
+        </div>
+
+        <!-- Content Panels -->
+        <div class="settings-tab-body">
+          <!-- TAB 1: ONLINE (LIVE SIMULATOR) -->
+          <div id="settings-panel-live" class="settings-panel active">
+            <div class="settings-grid-columns">
+              <div class="settings-card-col">
+                <div class="settings-col-title">ПАРАМЕТРИ ОНЛАЙН З'ЄДНАННЯ (UDP)</div>
+                <div class="settings-info-box">
+                  <div class="info-row">
+                    <span class="info-label">Джерело даних:</span>
+                    <span class="info-val highlight">X-Plane 11 UDP Broadcast (Real-time)</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Мережевий UDP порт:</span>
+                    <span class="info-val font-mono">0.0.0.0:49005 (host) &rarr; 49000 (container)</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Статус прийому пакетів:</span>
+                    <span id="live-sim-status" class="info-val badge-offline">ОЧІКУВАННЯ ДАНИХ СИМУЛЯТОРА</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Частота вхідного потоку:</span>
+                    <span id="live-sim-hz" class="info-val font-mono">0 Hz</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Отримано пакетів:</span>
+                    <span id="live-sim-packets" class="info-val font-mono">0</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-card-col">
+                <div class="settings-col-title">КЕРУВАННЯ РЕЖИМОМ ПРЯМОГО ЕФІРУ</div>
+                <div class="settings-desc-box">
+                  <p class="settings-hint">
+                    <strong>Режим прямої передачі:</strong> симулятор польоту X-Plane 11 транслює UDP пакети телеметрії на мережевий сокет комплексу.
+                    Використовується для контролю та оцінки курсантів під час виконання польотів безпосередньо у кабіні тренажера AT-F3001C.
+                  </p>
+                  <ul class="settings-features-list">
+                    <li>Синхронна трансляція PFD авіагоризонту, висоти, швидкості (20–50 Hz)</li>
+                    <li>Live трекінг координат на навігаційній карті UKLL RWY 13</li>
+                    <li>Автоматичний моніторинг стабілізованого заходу (ICAO Annex 6)</li>
+                    <li>Аналіз параметрів двигуна Lycoming IO-360-L2A</li>
+                  </ul>
+                </div>
+                <div class="settings-actions">
+                  <button id="btn-activate-live" class="btn-action primary">
+                    ▶ УВІМКНУТИ ОНЛАЙН РЕЖИМ (LIVE UDP)
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 2: REMOTE SERVER FILE -->
+          <div id="settings-panel-server-file" class="settings-panel hidden">
+            <div class="settings-grid-columns">
+              <div class="settings-card-col">
+                <div class="settings-col-title">ВИБІР ЗАПИСУ ПОЛЬОТУ НА СЕРВЕРІ</div>
+                <div class="form-group">
+                  <label class="form-label" for="select-server-file">Оберіть збережений політ на сервері:</label>
+                  <div class="select-wrapper">
+                    <select id="select-server-file" class="form-select">
+                      <option value="">Завантаження списку файлів...</option>
+                    </select>
+                    <button id="btn-refresh-files" class="btn-ctrl" title="Оновити список файлів">&#x21bb;</button>
+                  </div>
+                  <div id="server-file-details" class="file-meta-info"></div>
+                </div>
+              </div>
+
+              <div class="settings-card-col">
+                <div class="settings-col-title">ПАРАМЕТРИ ТА ПРОГРЕС ВІДТВОРЕННЯ</div>
+                <div class="playback-controls-group">
+                  <div class="ctrl-row">
+                    <label class="form-label">Швидкість відтворення:</label>
+                    <div class="speed-btn-group" id="server-speed-group">
+                      <button class="btn-speed" data-speed="0.5">0.5x</button>
+                      <button class="btn-speed active" data-speed="1.0">1.0x</button>
+                      <button class="btn-speed" data-speed="2.0">2.0x</button>
+                      <button class="btn-speed" data-speed="4.0">4.0x</button>
+                    </div>
+                  </div>
+
+                  <div class="ctrl-row checkbox-row">
+                    <label class="checkbox-label">
+                      <input type="checkbox" id="server-loop-chk" checked />
+                      <span>Зациклити відтворення (Loop)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="replay-status-card" id="server-replay-status-card">
+                  <div class="replay-progress-header">
+                    <span>Прогрес реплею:</span>
+                    <span id="server-replay-pct" class="font-mono">0.0%</span>
+                  </div>
+                  <div class="replay-progress-track">
+                    <div id="server-replay-fill" class="replay-progress-fill" style="width: 0%;"></div>
+                  </div>
+                  <div class="replay-progress-sub">
+                    <span id="server-replay-records">Записів: 0 / 0</span>
+                    <span id="server-replay-state">СТАТУС: ЗУПИНЕНО</span>
+                  </div>
+                </div>
+
+                <div class="settings-actions">
+                  <button id="btn-start-server-replay" class="btn-action primary">▶ ЗАПУСТИТИ РЕПЛЕЙ З СЕРВЕРА</button>
+                  <button id="btn-stop-server-replay" class="btn-action danger">⏹ ЗУПИНИТИ</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 3: LOCAL FILE FROM USER PC -->
+          <div id="settings-panel-local-file" class="settings-panel hidden">
+            <div class="settings-grid-columns">
+              <div class="settings-card-col">
+                <div class="settings-col-title">ЗАВАНТАЖЕННЯ ФАЙЛУ З КОМП'ЮТЕРА ІНСТРУКТОРА</div>
+                <div class="file-drop-zone" id="file-drop-zone">
+                  <input type="file" id="local-file-input" accept=".csv,.txt" class="file-input-hidden" />
+                  <div class="drop-zone-content">
+                    <svg viewBox="0 0 24 24" width="44" height="44" fill="var(--avionics-cyan)">
+                      <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+                    </svg>
+                    <div class="drop-text-primary">Натисніть або перетягніть файл польоту сюди</div>
+                    <div class="drop-text-secondary">Формати: .csv (експорт телеметрії) або .txt (X-Plane Data.txt)</div>
+                  </div>
+                </div>
+
+                <div id="local-file-selected-info" class="file-selected-box hidden">
+                  <div class="file-name-label">
+                    <span class="file-icon">&#128196;</span>
+                    <span id="selected-file-name" class="font-mono">--</span>
+                    <span id="selected-file-size" class="file-size-tag">0 KB</span>
+                  </div>
+                  <button id="btn-remove-selected-file" class="btn-ctrl-icon" title="Видалити вибраний файл">&times;</button>
+                </div>
+              </div>
+
+              <div class="settings-card-col">
+                <div class="settings-col-title">КЕРУВАННЯ ВІДТВОРЕННЯМ ЛОКАЛЬНОГО ФАЙЛУ</div>
+                <div class="playback-controls-group">
+                  <div class="ctrl-row">
+                    <label class="form-label">Швидкість відтворення:</label>
+                    <div class="speed-btn-group" id="local-speed-group">
+                      <button class="btn-speed" data-speed="0.5">0.5x</button>
+                      <button class="btn-speed active" data-speed="1.0">1.0x</button>
+                      <button class="btn-speed" data-speed="2.0">2.0x</button>
+                      <button class="btn-speed" data-speed="4.0">4.0x</button>
+                    </div>
+                  </div>
+
+                  <div class="ctrl-row checkbox-row">
+                    <label class="checkbox-label">
+                      <input type="checkbox" id="local-loop-chk" checked />
+                      <span>Зациклити відтворення (Loop)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="replay-status-card hidden" id="local-replay-status-card">
+                  <div class="replay-progress-header">
+                    <span>Прогрес завантаженого реплею:</span>
+                    <span id="local-replay-pct" class="font-mono">0.0%</span>
+                  </div>
+                  <div class="replay-progress-track">
+                    <div id="local-replay-fill" class="replay-progress-fill" style="width: 0%;"></div>
+                  </div>
+                  <div class="replay-progress-sub">
+                    <span id="local-replay-records">Записів: 0 / 0</span>
+                    <span id="local-replay-state">СТАТУС: АКТИВНО</span>
+                  </div>
+                </div>
+
+                <div class="settings-actions">
+                  <button id="btn-upload-and-play" class="btn-action primary" disabled>
+                    &#11014; ЗАВАНТАЖИТИ ТА ЗАПУСТИТИ РЕПЛЕЙ
+                  </button>
+                  <button id="btn-stop-local-replay" class="btn-action danger">⏹ ЗУПИНИТИ</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
+  </main>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js?v=3"></script>
 
   <!-- Avionics Modular Scripts -->
-  <script src="js/audio.js?v=15"></script>
-  <script src="js/pfd.js?v=15"></script>
-  <script src="js/nd.js?v=15"></script>
-  <script src="js/standby_gauges.js?v=15"></script>
-  <script src="js/engine.js?v=15"></script>
-  <script src="js/alerts.js?v=15"></script>
-  <script src="js/app.js?v=15"></script>
+  <script src="js/audio.js?v=21"></script>
+  <script src="js/pfd.js?v=21"></script>
+  <script src="js/nd.js?v=21"></script>
+  <script src="js/standby_gauges.js?v=21"></script>
+  <script src="js/engine.js?v=21"></script>
+  <script src="js/alerts.js?v=21"></script>
+  <script src="js/settings.js?v=21"></script>
+  <script src="js/app.js?v=21"></script>
 </body>
 </html>

@@ -7,9 +7,10 @@ Mounts and serves the Instructor Panel avionics web interface.
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import httpx
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -92,6 +93,101 @@ async def get_system_status() -> Dict[str, Any]:
 async def get_latest_telemetry() -> Dict[str, Any]:
     """Return the most recent aggregated avionics snapshot."""
     return aggregator.get_unified_payload()
+
+
+# ================= DATA SOURCE & REPLAY PROXY ENDPOINTS =================
+
+@app.get("/api/replay/status", summary="Get Replay Status")
+async def get_replay_status() -> Dict[str, Any]:
+    """Proxy query to telemetry-service for active replay status."""
+    url = f"{settings.TELEMETRY_HTTP_URL}/replay/status"
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(url)
+            return resp.json()
+    except Exception as e:
+        return {"mode": "unknown", "is_running": False, "error": str(e)}
+
+
+@app.get("/api/replay/files", summary="List Available Replay Files")
+async def list_replay_files() -> Dict[str, Any]:
+    """Proxy query to telemetry-service for stored flight recordings."""
+    url = f"{settings.TELEMETRY_HTTP_URL}/replay/files"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(url)
+            return resp.json()
+    except Exception as e:
+        return {"files": [], "error": str(e)}
+
+
+@app.post("/api/replay/start", summary="Start Flight Data Replay")
+async def start_replay(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Proxy command to start replay engine on telemetry-service."""
+    url = f"{settings.TELEMETRY_HTTP_URL}/replay/start"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(url, json=payload or {})
+            if resp.status_code != 200:
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+            return resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to contact telemetry service: {e}")
+
+
+@app.post("/api/replay/stop", summary="Stop Flight Data Replay")
+async def stop_replay() -> Dict[str, Any]:
+    """Proxy command to stop replay engine on telemetry-service."""
+    url = f"{settings.TELEMETRY_HTTP_URL}/replay/stop"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(url)
+            return resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to contact telemetry service: {e}")
+
+
+@app.post("/api/mode/live", summary="Switch to Live UDP Mode")
+@app.post("/api/telemetry/mode/live", summary="Switch to Live UDP Mode (alias)")
+async def switch_mode_live() -> Dict[str, Any]:
+    """Proxy command to switch telemetry-service to online X-Plane UDP ingestion."""
+    url = f"{settings.TELEMETRY_HTTP_URL}/telemetry/mode/live"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(url)
+            return resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to switch to live mode: {e}")
+
+
+@app.post("/api/replay/upload", summary="Upload Flight File and Start Replay")
+async def upload_flight_file(
+    file: UploadFile = File(...),
+    start_immediately: bool = Form(True),
+    speed: float = Form(1.0),
+    loop: bool = Form(True),
+) -> Dict[str, Any]:
+    """Proxy multipart file upload from instructor station to telemetry-service."""
+    url = f"{settings.TELEMETRY_HTTP_URL}/replay/upload"
+    try:
+        file_bytes = await file.read()
+        files = {"file": (file.filename, file_bytes, file.content_type or "application/octet-stream")}
+        data = {
+            "start_immediately": "true" if start_immediately else "false",
+            "speed": str(speed),
+            "loop": "true" if loop else "false",
+        }
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(url, files=files, data=data)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+            return resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Upload proxy error: {e}")
 
 
 @app.websocket("/ws/telemetry")

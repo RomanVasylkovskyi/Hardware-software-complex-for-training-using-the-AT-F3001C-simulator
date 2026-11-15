@@ -103,14 +103,48 @@ class AlertsAndScoringManager {
     }, 3200);
   }
 
-  dismissToast(warn) {
-    this.dismissedWarnings.add(warn);
-    const toast = this.toasts.get(warn);
-    if (toast) {
-      toast.classList.add('toast-exiting');
+  normalizeAlert(rawAlert) {
+    if (!rawAlert) return null;
+    const str = String(rawAlert).trim();
+    if (!str) return null;
+
+    let key = str;
+    let label = str;
+    let isRed = false;
+
+    // Normalize known categories to static canonical keys to prevent rapid re-rendering
+    if (/simulator connection lost/i.test(str)) {
+      key = 'SIMULATOR_CONNECTION_LOST';
+      label = 'SIMULATOR CONNECTION LOST';
+      isRed = false;
+    } else if (/no telemetry received/i.test(str)) {
+      key = 'NO_TELEMETRY';
+      label = 'NO TELEMETRY RECEIVED';
+      isRed = false;
+    } else if (/gps.*lost|no gps/i.test(str)) {
+      key = 'NO_GPS_FIX';
+      label = 'NO GPS FIX';
+      isRed = true;
+    } else {
+      // Strip any dynamic parenthetical details like "(no packets for 2.1s)" or "(vsi=-1150)"
+      key = str.replace(/\s*\([^)]*\)/g, '').trim().toUpperCase();
+      label = key;
+      isRed = ['PULL UP', 'STALL', 'OVERSPEED', 'TERRAIN', 'UNSTABILIZED', 'FAIL', 'ERROR', 'CRASH', 'OFFLINE']
+        .some(w => key.includes(w));
+    }
+
+    return { key, label, isRed };
+  }
+
+  dismissToast(key) {
+    this.dismissedWarnings.add(key);
+    const toastData = this.toasts.get(key);
+    if (toastData) {
+      const el = toastData.el || toastData;
+      el.classList.add('toast-exiting');
       setTimeout(() => {
-        toast.remove();
-        this.toasts.delete(warn);
+        el.remove();
+        this.toasts.delete(key);
       }, 350);
     }
   }
@@ -145,105 +179,87 @@ class AlertsAndScoringManager {
   }
 
   renderWarnings(warningsList) {
-    if (!warningsList || warningsList.length === 0) {
-      // Smoothly dismiss all active toasts to the right
-      for (const [warn, toast] of this.toasts.entries()) {
-        toast.classList.add('toast-exiting');
-        setTimeout(() => toast.remove(), 350);
+    const now = Date.now();
+
+    // 1. Normalize all incoming warnings into map of key -> { key, label, isRed }
+    const currentAlerts = new Map();
+    (warningsList || []).forEach(w => {
+      const norm = this.normalizeAlert(w);
+      if (norm && !currentAlerts.has(norm.key)) {
+        currentAlerts.set(norm.key, norm);
       }
-      this.toasts.clear();
-      this.activeWarnings.clear();
-      this.dismissedWarnings.clear();
+    });
 
-      if (this.banner) {
-        this.banner.innerHTML = '<span class="annunciator-normal">SYSTEMS NORMAL</span>';
-        this.banner.className = 'annunciator-container normal';
-        this.banner.title = 'Всі системи в нормі. Клацніть для перегляду статусу';
-      }
-      return;
-    }
-
-    // Determine Master Warning
-    const isMasterWarning = warningsList.some(warn => 
-      ['PULL UP', 'STALL', 'OVERSPEED', 'TERRAIN', 'UNSTABILIZED', 'FAIL', 'ERROR', 'CRASH', 'OFFLINE']
-      .some(w => String(warn).toUpperCase().includes(w))
-    );
-
-    // 1. Update Compact Header Annunciator (Aviation Master Warning / Master Caution)
-    if (this.banner) {
-      const typeLabel = isMasterWarning ? 'УВАГА' : 'ПОПЕРЕДЖЕННЯ';
-      const count = warningsList.length;
-      const countLabel = `${typeLabel}: ${count}`;
-      this.banner.innerHTML = `<span class="header-warn-summary">${countLabel}</span>`;
-      this.banner.className = `annunciator-container ${isMasterWarning ? 'master-warning' : 'master-caution'}`;
-      this.banner.title = `Активно ${count} попереджень. Клацніть, щоб перемкнути відображення`;
-    }
-
-    // 2. Remove obsolete toasts with light slide-out animation to the right
-    for (const [warn, toast] of this.toasts.entries()) {
-      if (!warningsList.includes(warn)) {
-        toast.classList.add('toast-exiting');
-        setTimeout(() => toast.remove(), 350);
-        this.toasts.delete(warn);
-        this.dismissedWarnings.delete(warn);
+    // 2. Remove obsolete alerts with hysteresis debounce (min 2000ms display)
+    for (const [key, toastData] of this.toasts.entries()) {
+      if (!currentAlerts.has(key)) {
+        if (now - (toastData.firstSeen || 0) >= 2000) {
+          const el = toastData.el || toastData;
+          el.classList.add('toast-exiting');
+          setTimeout(() => {
+            el.remove();
+            this.toasts.delete(key);
+            this.activeWarnings.delete(key);
+            this.dismissedWarnings.delete(key);
+          }, 350);
+        }
       }
     }
 
-    // 3. Add or update toast rows in the column stack
-    warningsList.forEach(warn => {
-      // If warning has re-triggered as a new state, allow it to reappear
-      if (!this.activeWarnings.has(warn)) {
-        this.dismissedWarnings.delete(warn);
-      }
+    // 3. Render or update currently active alerts without flickering
+    for (const [key, norm] of currentAlerts.entries()) {
+      if (this.dismissedWarnings.has(key)) continue;
 
-      if (this.dismissedWarnings.has(warn)) return;
-
-      if (!this.toasts.has(warn)) {
-        const upper = String(warn).toUpperCase();
-        const isRed = ['PULL UP', 'STALL', 'OVERSPEED', 'TERRAIN', 'UNSTABILIZED', 'FAIL', 'ERROR', 'CRASH', 'OFFLINE'].some(w => upper.includes(w));
-        const cssClass = isRed ? 'warn-badge-red' : 'warn-badge-amber';
-        const cardType = isRed ? 'master-warning' : 'master-caution';
+      if (this.toasts.has(key)) {
+        // Already active on screen - update timestamp in-place, DO NOT recreate DOM element!
+        const toastData = this.toasts.get(key);
+        toastData.lastSeen = now;
+        const badge = toastData.el?.querySelector('.warn-badge');
+        if (badge && badge.innerText !== norm.label) {
+          badge.innerText = norm.label;
+        }
+      } else {
+        // Brand new alert: create single stable toast
+        const cardType = norm.isRed ? 'master-warning' : 'master-caution';
+        const cssClass = norm.isRed ? 'warn-badge-red' : 'warn-badge-amber';
 
         const toast = document.createElement('div');
         toast.className = `hud-alert-toast ${cardType} toast-entering`;
         toast.setAttribute('role', 'alert');
         toast.innerHTML = `
-          <span class="warn-badge ${cssClass}">${warn}</span>
+          <span class="warn-badge ${cssClass}">${norm.label}</span>
           <button class="hud-alert-close" title="Сховати">&times;</button>
         `;
 
         const closeBtn = toast.querySelector('.hud-alert-close');
         closeBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          this.dismissToast(warn);
+          this.dismissToast(key);
         });
 
         this.toastContainer.appendChild(toast);
-        this.toasts.set(warn, toast);
+        this.toasts.set(key, { el: toast, firstSeen: now, lastSeen: now, isRed: norm.isRed, label: norm.label });
+        this.activeWarnings.add(key);
 
-        // Light animation: enter from right
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             toast.classList.remove('toast-entering');
           });
         });
 
-        // Play audio chime if new warning
-        if (!this.activeWarnings.has(warn)) {
-          if (window.cockpitAudio) {
-            window.cockpitAudio.playAlert(isRed ? 'warning' : 'caution');
-          }
+        // Audio chime only once when first triggered
+        if (window.cockpitAudio) {
+          window.cockpitAudio.playAlert(norm.isRed ? 'warning' : 'caution');
         }
       }
-    });
-
-    this.activeWarnings = new Set(warningsList);
+    }
   }
 
   showOfflineState() {
-    for (const [warn, toast] of this.toasts.entries()) {
-      toast.classList.add('toast-exiting');
-      setTimeout(() => toast.remove(), 350);
+    for (const [key, toastData] of this.toasts.entries()) {
+      const el = toastData.el || toastData;
+      el.classList.add('toast-exiting');
+      setTimeout(() => el.remove(), 350);
     }
     this.toasts.clear();
     this.activeWarnings.clear();
