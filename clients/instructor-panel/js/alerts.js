@@ -140,12 +140,27 @@ class AlertsAndScoringManager {
     this.dismissedWarnings.add(key);
     const toastData = this.toasts.get(key);
     if (toastData) {
-      const el = toastData.el || toastData;
-      el.classList.add('toast-exiting');
-      setTimeout(() => {
-        el.remove();
+      if (toastData.exitTimer) {
+        clearTimeout(toastData.exitTimer);
+        toastData.exitTimer = null;
+      }
+      const el = toastData.el;
+      if (el) {
+        el.classList.add('toast-exiting');
+        setTimeout(() => {
+          if (el.parentNode) el.remove();
+          this.toasts.delete(key);
+          this.activeWarnings.delete(key);
+        }, 300);
+      } else {
         this.toasts.delete(key);
-      }, 350);
+        this.activeWarnings.delete(key);
+      }
+    }
+    // Strict DOM safeguard: remove any leftover DOM elements matching this alert key
+    if (this.toastContainer) {
+      const stray = this.toastContainer.querySelectorAll(`.hud-alert-toast[data-alert-key="${key}"]`);
+      stray.forEach(el => el.remove());
     }
   }
 
@@ -183,7 +198,7 @@ class AlertsAndScoringManager {
   renderWarnings(warningsList) {
     const now = Date.now();
 
-    // 1. Normalize all incoming warnings into map of key -> { key, label, isRed }
+    // 1. Normalize and strictly deduplicate all incoming alerts into map of key -> norm
     const currentAlerts = new Map();
     (warningsList || []).forEach(w => {
       const norm = this.normalizeAlert(w);
@@ -192,76 +207,169 @@ class AlertsAndScoringManager {
       }
     });
 
-    // 2. Remove obsolete alerts with hysteresis debounce (min 2000ms display)
+    // 2. Strict DOM Deduplication: Remove any duplicate elements for the same key in DOM
+    if (this.toastContainer) {
+      const domElements = this.toastContainer.querySelectorAll('.hud-alert-toast');
+      const seenDomKeys = new Set();
+      domElements.forEach(el => {
+        const k = el.dataset.alertKey;
+        if (!k) return;
+        if (seenDomKeys.has(k)) {
+          // Remove duplicate from DOM immediately!
+          el.remove();
+        } else {
+          seenDomKeys.add(k);
+        }
+      });
+    }
+
+    // 3. Process exiting alerts (those in this.toasts that are no longer in currentAlerts)
     for (const [key, toastData] of this.toasts.entries()) {
       if (!currentAlerts.has(key)) {
-        if (now - (toastData.firstSeen || 0) >= 2000) {
-          const el = toastData.el || toastData;
-          el.classList.add('toast-exiting');
-          setTimeout(() => {
-            el.remove();
-            this.toasts.delete(key);
-            this.activeWarnings.delete(key);
-            this.dismissedWarnings.delete(key);
-          }, 350);
+        const elapsed = now - (toastData.firstSeen || 0);
+        // Hysteresis debounce: keep visible for at least 2500ms before removing to prevent rapid strobing
+        if (elapsed >= 2500) {
+          if (!toastData.isExiting) {
+            toastData.isExiting = true;
+            const el = toastData.el;
+            if (el) {
+              el.classList.add('toast-exiting');
+              toastData.exitTimer = setTimeout(() => {
+                if (el.parentNode) el.remove();
+                this.toasts.delete(key);
+                this.activeWarnings.delete(key);
+                this.dismissedWarnings.delete(key);
+              }, 300);
+            } else {
+              this.toasts.delete(key);
+              this.activeWarnings.delete(key);
+              this.dismissedWarnings.delete(key);
+            }
+          }
         }
       }
     }
 
-    // 3. Render or update currently active alerts without flickering
+    // 4. Render or update currently active alerts (Strict Singleton Pattern)
     for (const [key, norm] of currentAlerts.entries()) {
       if (this.dismissedWarnings.has(key)) continue;
 
       if (this.toasts.has(key)) {
-        // Already active on screen - update timestamp in-place, DO NOT recreate DOM element!
         const toastData = this.toasts.get(key);
+        // If alert was exiting, cancel the exit because the alert is active again!
+        if (toastData.isExiting) {
+          toastData.isExiting = false;
+          if (toastData.exitTimer) {
+            clearTimeout(toastData.exitTimer);
+            toastData.exitTimer = null;
+          }
+          if (toastData.el) {
+            toastData.el.classList.remove('toast-exiting');
+          }
+        }
         toastData.lastSeen = now;
         const badge = toastData.el?.querySelector('.warn-badge');
         if (badge && badge.innerText !== norm.label) {
           badge.innerText = norm.label;
         }
+
+        // Ensure DOM element is still attached to toastContainer
+        if (toastData.el && !toastData.el.parentNode && this.toastContainer) {
+          this.toastContainer.appendChild(toastData.el);
+        }
       } else {
-        // Brand new alert: create single stable toast
-        const cardType = norm.isRed ? 'master-warning' : 'master-caution';
-        const cssClass = norm.isRed ? 'warn-badge-red' : 'warn-badge-amber';
-
-        const toast = document.createElement('div');
-        toast.className = `hud-alert-toast ${cardType} toast-entering`;
-        toast.setAttribute('role', 'alert');
-        toast.innerHTML = `
-          <span class="warn-badge ${cssClass}">${norm.label}</span>
-          <button class="hud-alert-close" title="Сховати">&times;</button>
-        `;
-
-        const closeBtn = toast.querySelector('.hud-alert-close');
-        closeBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.dismissToast(key);
-        });
-
-        this.toastContainer.appendChild(toast);
-        this.toasts.set(key, { el: toast, firstSeen: now, lastSeen: now, isRed: norm.isRed, label: norm.label });
-        this.activeWarnings.add(key);
-
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            toast.classList.remove('toast-entering');
+        // Double-check DOM: does an element with this key ALREADY exist in toastContainer?
+        let existingEl = this.toastContainer?.querySelector(`.hud-alert-toast[data-alert-key="${key}"]`);
+        
+        if (existingEl) {
+          // Re-link existing element into map to prevent orphan accumulation
+          this.toasts.set(key, {
+            el: existingEl,
+            firstSeen: now,
+            lastSeen: now,
+            isRed: norm.isRed,
+            label: norm.label,
+            isExiting: false,
+            exitTimer: null,
           });
-        });
+          this.activeWarnings.add(key);
+          existingEl.classList.remove('toast-exiting');
+        } else {
+          // Brand new alert: create single stable toast
+          const cardType = norm.isRed ? 'master-warning' : 'master-caution';
+          const cssClass = norm.isRed ? 'warn-badge-red' : 'warn-badge-amber';
 
-        // Audio chime only once when first triggered
-        if (window.cockpitAudio) {
-          window.cockpitAudio.playAlert(norm.isRed ? 'warning' : 'caution');
+          const toast = document.createElement('div');
+          toast.className = `hud-alert-toast ${cardType} toast-entering`;
+          toast.setAttribute('role', 'alert');
+          toast.dataset.alertKey = key;
+          toast.innerHTML = `
+            <span class="warn-badge ${cssClass}">${norm.label}</span>
+            <button class="hud-alert-close" title="Сховати">&times;</button>
+          `;
+
+          const closeBtn = toast.querySelector('.hud-alert-close');
+          closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.dismissToast(key);
+          });
+
+          this.toastContainer.appendChild(toast);
+          this.toasts.set(key, {
+            el: toast,
+            firstSeen: now,
+            lastSeen: now,
+            isRed: norm.isRed,
+            label: norm.label,
+            isExiting: false,
+            exitTimer: null,
+          });
+          this.activeWarnings.add(key);
+
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              toast.classList.remove('toast-entering');
+            });
+          });
+
+          // Audio chime only once when first triggered
+          if (window.cockpitAudio) {
+            window.cockpitAudio.playAlert(norm.isRed ? 'warning' : 'caution');
+          }
         }
       }
+    }
+
+    // 5. Cleanup sweep: remove any DOM toasts whose keys are neither active nor tracked in this.toasts
+    if (this.toastContainer) {
+      const allToasts = this.toastContainer.querySelectorAll('.hud-alert-toast[data-alert-key]');
+      allToasts.forEach(el => {
+        const k = el.dataset.alertKey;
+        if (k && !currentAlerts.has(k) && !this.toasts.has(k)) {
+          el.remove();
+        }
+      });
     }
   }
 
   showOfflineState() {
     for (const [key, toastData] of this.toasts.entries()) {
+      if (toastData.exitTimer) {
+        clearTimeout(toastData.exitTimer);
+        toastData.exitTimer = null;
+      }
       const el = toastData.el || toastData;
-      el.classList.add('toast-exiting');
-      setTimeout(() => el.remove(), 350);
+      if (el) {
+        el.classList.add('toast-exiting');
+        setTimeout(() => { if (el.parentNode) el.remove(); }, 300);
+      }
+    }
+    this.toasts.clear();
+    this.activeWarnings.clear();
+    this.dismissedWarnings.clear();
+
+    if (this.toastContainer) {
+      this.toastContainer.querySelectorAll('.hud-alert-toast').forEach(el => el.remove());
     }
     this.toasts.clear();
     this.activeWarnings.clear();
