@@ -10,16 +10,19 @@ class TelemetrySettingsManager {
   constructor() {
     this.cardEl = document.getElementById('card-settings');
     this.headerBadge = document.getElementById('hdr-source-indicator');
+    this.modeSelect = document.getElementById('settings-mode-select');
 
-    // Flat Mode Columns
-    this.cols = {
-      live: document.getElementById('col-live'),
-      server: document.getElementById('col-server'),
-      local: document.getElementById('col-local'),
+    // Mode Views
+    this.views = {
+      live: document.getElementById('view-mode-live'),
+      'server-file': document.getElementById('view-mode-server'),
+      'local-file': document.getElementById('view-mode-local'),
     };
 
     // State
     this.currentMode = 'live'; // 'live' or 'replay'
+    this.selectedMode = 'live';
+    this.userHasChangedDropdown = false;
     this.isReplayRunning = false;
     this.serverSpeed = 1.0;
     this.serverLoop = true;
@@ -35,10 +38,21 @@ class TelemetrySettingsManager {
   }
 
   bindEvents() {
+    // Mode Dropdown Switcher
+    if (this.modeSelect) {
+      this.modeSelect.addEventListener('change', (e) => {
+        this.userHasChangedDropdown = true;
+        this.switchMode(e.target.value, true);
+      });
+    }
+
     // --- MODE 1: Live Controls ---
     const btnActivateLive = document.getElementById('btn-activate-live');
     if (btnActivateLive) {
-      btnActivateLive.addEventListener('click', () => this.activateLiveMode());
+      btnActivateLive.addEventListener('click', () => {
+        this.userHasChangedDropdown = true;
+        this.switchMode('live', true);
+      });
     }
 
     // --- TAB 2: Server File Controls ---
@@ -161,34 +175,70 @@ class TelemetrySettingsManager {
     }
   }
 
-  switchTab(tabId) {
-    // Legacy compatibility stub
-  }
+  switchMode(modeId, fromUser = false) {
+    if (!modeId) return;
+    this.selectedMode = modeId;
 
-  highlightActiveColumn(data) {
-    if (!this.cols || !this.cols.live) {
-      this.cols = {
-        live: document.getElementById('col-live'),
-        server: document.getElementById('col-server'),
-        local: document.getElementById('col-local'),
+    if (!this.modeSelect) {
+      this.modeSelect = document.getElementById('settings-mode-select');
+    }
+    if (this.modeSelect && this.modeSelect.value !== modeId) {
+      this.modeSelect.value = modeId;
+    }
+
+    if (!this.views || !this.views.live) {
+      this.views = {
+        live: document.getElementById('view-mode-live'),
+        'server-file': document.getElementById('view-mode-server'),
+        'local-file': document.getElementById('view-mode-local'),
       };
     }
 
-    const isReplay = this.currentMode === 'replay' && this.isReplayRunning;
-    if (!isReplay) {
-      this.cols.live?.classList.add('active-col');
-      this.cols.server?.classList.remove('active-col');
-      this.cols.local?.classList.remove('active-col');
-    } else {
-      this.cols.live?.classList.remove('active-col');
-      const isLocal = data && (data.is_local || (data.file_name && data.file_name.startsWith('upload_')) || (this.selectedLocalFile && data.file_name === this.selectedLocalFile.name));
-      if (isLocal) {
-        this.cols.local?.classList.add('active-col');
-        this.cols.server?.classList.remove('active-col');
-      } else {
-        this.cols.server?.classList.add('active-col');
-        this.cols.local?.classList.remove('active-col');
+    Object.keys(this.views).forEach(key => {
+      const view = this.views[key];
+      if (view) {
+        if (key === modeId) {
+          view.classList.remove('hidden');
+          view.classList.add('active');
+        } else {
+          view.classList.add('hidden');
+          view.classList.remove('active');
+        }
       }
+    });
+
+    if (fromUser) {
+      if (modeId === 'live') {
+        this.activateLiveMode();
+      } else if (modeId === 'server-file') {
+        if (this.currentMode === 'live' || (this.isReplayRunning && this.selectedLocalFile)) {
+          this.stopReplay();
+        }
+        this.currentMode = 'replay';
+        this.updateHeaderBadge('REPLAY (СЕРВЕР)');
+        this.updateBadgeDisplay('ОЧІКУВАННЯ РЕПЛЕЮ (СЕРВЕР)', 'mode-badge-replay');
+      } else if (modeId === 'local-file') {
+        if (this.currentMode === 'live' || (this.isReplayRunning && !this.selectedLocalFile)) {
+          this.stopReplay();
+        }
+        this.currentMode = 'replay';
+        this.updateHeaderBadge('REPLAY (ЛОКАЛЬНИЙ ФАЙЛ)');
+        this.updateBadgeDisplay('ОЧІКУВАННЯ ФАЙЛУ (ПК)', 'mode-badge-replay');
+      }
+    }
+  }
+
+  updateHeaderBadge(text, isLive = false) {
+    if (!this.headerBadge) return;
+    this.headerBadge.className = isLive ? 'source-mode-tag live' : 'source-mode-tag replay';
+    this.headerBadge.innerText = text;
+  }
+
+  updateBadgeDisplay(text, badgeClass) {
+    const badge = document.getElementById('settings-active-mode-badge');
+    if (badge) {
+      badge.className = badgeClass;
+      badge.innerText = text;
     }
   }
 
@@ -366,8 +416,15 @@ class TelemetrySettingsManager {
       }
     }
 
-    // Highlight the active column
-    this.highlightActiveColumn(data);
+    // Determine active mode in system
+    let systemMode = 'live';
+    if (this.currentMode === 'replay' && this.isReplayRunning) {
+      systemMode = isLocal ? 'local-file' : 'server-file';
+    }
+
+    if (this.isReplayRunning || !this.userHasChangedDropdown) {
+      this.switchMode(systemMode, false);
+    }
   }
 
   // Real-time update from incoming WebSocket telemetry snapshot
@@ -381,11 +438,6 @@ class TelemetrySettingsManager {
     } else {
       this.currentMode = 'live';
       this.isReplayRunning = false;
-    }
-
-    this.highlightActiveColumn(st);
-      this.currentMode = 'replay';
-      this.isReplayRunning = true;
     }
 
     // Header badge synchronization
@@ -425,6 +477,7 @@ class TelemetrySettingsManager {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
+      this.userHasChangedDropdown = false;
       this.showToast('Увімкнено онлайн режим прийому з X-Plane 11 UDP (0.0.0.0:49005/49000)', 'success');
       this.fetchReplayStatus();
     } catch (e) {
@@ -462,6 +515,7 @@ class TelemetrySettingsManager {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
+      this.userHasChangedDropdown = false;
       this.showToast(`Реплей файлу ${selectedFile} успішно запущено (${data.total_records || ''} рядків)`, 'success');
       this.fetchReplayStatus();
     } catch (e) {
@@ -550,6 +604,7 @@ class TelemetrySettingsManager {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
+      this.userHasChangedDropdown = false;
       this.showToast(`Файл успішно завантажено! Реплей розпочато (${data.total_records || 0} записів)`, 'success');
       this.fetchReplayStatus();
       this.fetchServerFiles(); // Refresh file list to show newly uploaded file
