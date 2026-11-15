@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css?v=3" />
   
   <!-- Custom Avionics CSS -->
-  <link rel="stylesheet" href="css/main.css?v=26" />
+  <link rel="stylesheet" href="css/main.css?v=27" />
 </head>
 <body>
   <!-- HEADER / SYSTEM STATUS BAR -->
@@ -362,8 +362,12 @@
                   <span class="flat-val font-accent">X-Plane 11 UDP Broadcast (Real-time)</span>
                 </div>
                 <div class="flat-data-row">
-                  <span class="flat-label">Мережевий UDP порт:</span>
-                  <span class="flat-val font-mono">0.0.0.0:49005 (host) &rarr; 49000 (container)</span>
+                  <span class="flat-label">IP адреса для X-Plane:</span>
+                  <span class="flat-val font-mono" style="color: #38bdf8; font-weight: 700;">127.0.0.1 <span style="font-size: 0.75rem; color: #94a3b8; font-weight: normal;">(або 192.168.88.248)</span></span>
+                </div>
+                <div class="flat-data-row">
+                  <span class="flat-label">Порт відправки в X-Plane:</span>
+                  <span class="flat-val font-mono" style="color: #4ade80; font-weight: 700;">49005 <span style="font-size: 0.75rem; color: #94a3b8; font-weight: normal;">(host 49005 &rarr; container 49000)</span></span>
                 </div>
                 <div class="flat-data-row">
                   <span class="flat-label">Статус прийому пакетів:</span>
@@ -390,6 +394,15 @@
                   <li>Автоматичний моніторинг стабілізованого заходу (ICAO Annex 6)</li>
                   <li>Аналіз параметрів двигуна Lycoming IO-360-L2A</li>
                 </ul>
+
+                <div style="margin-top: 14px; padding: 12px 14px; background: rgba(56, 189, 248, 0.08); border-left: 3px solid #38bdf8; border-radius: 4px; font-size: 0.8rem; line-height: 1.5; color: #cbd5e1;">
+                  <strong style="color: #38bdf8;">Конфігурація в симуляторі X-Plane 11:</strong><br/>
+                  1. Відкрийте меню <em>Settings &rarr; Data Output &rarr; General Data Output</em>.<br/>
+                  2. Праворуч у блоці <strong>NETWORK CONFIGURATION</strong> увімкніть галочку <strong>Send network data output</strong>.<br/>
+                  3. Введіть <strong>IP Address:</strong> <code style="color: #38bdf8; font-weight: 700; background: rgba(0,0,0,0.4); padding: 1px 5px; border-radius: 3px;">127.0.0.1</code><br/>
+                  4. Введіть <strong>Port:</strong> <code style="color: #4ade80; font-weight: 700; background: rgba(0,0,0,0.4); padding: 1px 5px; border-radius: 3px;">49005</code><br/>
+                  5. Натисніть <strong>Done</strong> у симуляторі для збереження.
+                </div>
               </div>
             </div>
 
@@ -539,13 +552,13 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js?v=3"></script>
 
   <!-- Avionics Modular Scripts -->
-  <script src="js/audio.js?v=26"></script>
-  <script src="js/pfd.js?v=26"></script>
-  <script src="js/nd.js?v=26"></script>
-  <script src="js/standby_gauges.js?v=26"></script>
-  <script src="js/engine.js?v=26"></script>
-  <script src="js/alerts.js?v=26"></script>
-  <script src="js/settings.js?v=26"></script>
-  <script src="js/app.js?v=26"></script>
+  <script src="js/audio.js?v=27"></script>
+  <script src="js/pfd.js?v=27"></script>
+  <script src="js/nd.js?v=27"></script>
+  <script src="js/standby_gauges.js?v=27"></script>
+  <script src="js/engine.js?v=27"></script>
+  <script src="js/alerts.js?v=27"></script>
+  <script src="js/settings.js?v=27"></script>
+  <script src="js/app.js?v=27"></script>
 </body>
 </html>
