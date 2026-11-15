@@ -255,7 +255,16 @@ class InstructorPanelApp {
 
     // 5. Instantly render latest telemetry onto the newly visible section
     if (this.lastPayload) {
-      const isTelemetryOnline = this.serviceStatus.telemetry === 'ONLINE';
+      const telemStatus = this.lastPayload.telemetry?.status;
+      const isSimulatorDataFlowing = Boolean(
+        telemStatus && (
+          telemStatus.replay_mode === true ||
+          ((telemStatus.connection === 'CONNECTED' || telemStatus.connection === 'ONLINE') &&
+           ((telemStatus.packet_rate_hz || 0) > 0 || (telemStatus.packets_received || 0) > 0) &&
+           (telemStatus.time_since_last_packet_sec === undefined || telemStatus.time_since_last_packet_sec < 4.0))
+        )
+      );
+      const isTelemetryOnline = (this.serviceStatus.telemetry === 'ONLINE') && isSimulatorDataFlowing;
       const isVisionOnline = this.serviceStatus.vision === 'ONLINE';
       if (viewName === 'pfd' || viewName === 'all') {
         this.pfd.update(this.lastPayload.telemetry, isTelemetryOnline);
@@ -388,9 +397,18 @@ class InstructorPanelApp {
       this.updateServicePills();
     }
 
-    const isTelemetryOnline = this.serviceStatus.telemetry === 'ONLINE';
+    const telemStatus = payload.telemetry?.status;
+    const isSimulatorDataFlowing = Boolean(
+      telemStatus && (
+        telemStatus.replay_mode === true ||
+        ((telemStatus.connection === 'CONNECTED' || telemStatus.connection === 'ONLINE') &&
+         ((telemStatus.packet_rate_hz || 0) > 0 || (telemStatus.packets_received || 0) > 0) &&
+         (telemStatus.time_since_last_packet_sec === undefined || telemStatus.time_since_last_packet_sec < 4.0))
+      )
+    );
+    const isTelemetryOnline = (this.serviceStatus.telemetry === 'ONLINE') && isSimulatorDataFlowing;
     const isVisionOnline = this.serviceStatus.vision === 'ONLINE';
-    const isAnalyticsOnline = this.serviceStatus.analytics === 'ONLINE';
+    const isAnalyticsOnline = (this.serviceStatus.analytics === 'ONLINE') && isTelemetryOnline;
 
     // Master Warning / Caution & Annunciator Bar always updates
     this.alerts.update(payload.analytics, payload.telemetry, isAnalyticsOnline);
@@ -474,15 +492,15 @@ class InstructorPanelApp {
 
     if (!isOnline || !vision) {
       if (pilotElem) {
-        pilotElem.innerText = 'OFFLINE';
+        pilotElem.innerText = 'nodata';
         pilotElem.className = 'hud-val text-muted';
       }
       if (gazeElem) {
-        gazeElem.innerText = '--';
+        gazeElem.innerText = 'nodata';
         gazeElem.className = 'hud-val text-muted';
       }
       if (postureElem) {
-        postureElem.innerText = '--';
+        postureElem.innerText = 'nodata';
         postureElem.className = 'hud-val text-muted';
       }
       return;

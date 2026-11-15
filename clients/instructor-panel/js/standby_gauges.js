@@ -171,7 +171,7 @@ class StandbyAirspeedGauge {
     const valid = this.isOnline && this.airspeed !== null && this.airspeed !== undefined;
     if (!valid) {
       // Display prominent red FAIL flag
-      this.drawFailBadge(ctx, cx, cy, 'NO DATA');
+      this.drawFailBadge(ctx, cx, cy, 'nodata');
       // Park needle at stop pin
       this.drawNeedle(ctx, cx, cy, r * 0.82, this.speedToAngle(0) - Math.PI / 2);
     } else {
@@ -706,7 +706,7 @@ class StandbyAltimeterGauge {
 
     // ZERO-MOCK DATA & NEEDLES
     if (!valid) {
-      this.drawFailBadge(ctx, cx, cy, 'NO DATA');
+      this.drawFailBadge(ctx, cx, cy, 'nodata');
       this.drawNeedles(ctx, cx, cy, r, 0);
     } else {
       this.drawNeedles(ctx, cx, cy, r, alt);
@@ -1734,8 +1734,12 @@ class StandbyInstrumentsCluster {
   }
 
   update(telemetry, isOnline) {
-    const validTelem = Boolean(telemetry && (isOnline || telemetry.status?.connection === 'CONNECTED' || telemetry.status?.connection === 'REPLAY' || telemetry.indicated_airspeed_kt !== undefined));
-    if (!validTelem || !telemetry) {
+    const isSimConnected = Boolean(isOnline && telemetry && (
+      telemetry.status?.replay_mode === true ||
+      ((telemetry.status?.connection === 'CONNECTED' || telemetry.status?.connection === 'ONLINE') &&
+       (telemetry.status?.packet_rate_hz > 0 || (telemetry.status?.time_since_last_packet_sec || 999) < 4.0))
+    ));
+    if (!isSimConnected || !telemetry) {
       this.airspeedGauge?.update(null, false);
       this.attitudeGauge?.update(null, null, false);
       this.altimeterGauge?.update(null, false);

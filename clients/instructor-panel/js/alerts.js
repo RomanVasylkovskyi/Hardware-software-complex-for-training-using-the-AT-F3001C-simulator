@@ -154,8 +154,10 @@ class AlertsAndScoringManager {
       this.showOfflineState();
       if (this.approachBadge) {
         this.approachBadge.className = 'status-pill status-offline';
-        this.approachBadge.innerText = 'APPROACH: NO DATA';
+        this.approachBadge.innerText = 'APPROACH: nodata';
       }
+      if (this.gsIndicator) this.gsIndicator.innerHTML = '<div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div>';
+      if (this.locIndicator) this.locIndicator.innerHTML = '<div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div>';
       return;
     }
 
@@ -294,6 +296,12 @@ class AlertsAndScoringManager {
     } else if (status === 'UNSTABILIZED' || status === 'UNSTABLE' || status === 'GO_AROUND_MANDATORY') {
       this.approachBadge.className = 'status-pill status-error blink';
       this.approachBadge.innerText = 'APPROACH: UNSTABILIZED';
+    } else if (status === 'MONITORING') {
+      this.approachBadge.className = 'status-pill status-caution';
+      this.approachBadge.innerText = 'APPROACH: MONITORING';
+    } else if (status === 'UNABLE_TO_EVALUATE_MISSING_DATA' || status === 'NO_DATA') {
+      this.approachBadge.className = 'status-pill status-offline';
+      this.approachBadge.innerText = 'APPROACH: nodata';
     } else {
       // Check AGL altitude to determine approach phase
       const agl = telemetry?.altitude_agl_ft;
@@ -301,8 +309,8 @@ class AlertsAndScoringManager {
         this.approachBadge.className = 'status-pill status-caution';
         this.approachBadge.innerText = 'APPROACH: MONITORING';
       } else {
-        this.approachBadge.className = 'status-pill status-neutral';
-        this.approachBadge.innerText = 'APPROACH: INACTIVE';
+        this.approachBadge.className = 'status-pill status-offline';
+        this.approachBadge.innerText = 'APPROACH: nodata';
       }
     }
 

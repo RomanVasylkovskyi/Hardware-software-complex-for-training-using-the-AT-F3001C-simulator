@@ -161,9 +161,12 @@ class EngineInstrumentsPanel {
 
     if (value === null || value === undefined) {
       // SENSOR UNREAD / NO DATA STATE
-      if (valElem) valElem.innerText = '--';
+      if (valElem) valElem.innerText = 'nodata';
       if (barElem) barElem.style.width = '0%';
-      if (badgeElem) badgeElem.classList.remove('hidden');
+      if (badgeElem) {
+        badgeElem.innerText = 'nodata';
+        badgeElem.classList.remove('hidden');
+      }
     } else {
       // VALID SENSOR DATA
       const pct = Math.max(0, Math.min(100, ((value - minVal) / (maxVal - minVal)) * 100));
@@ -178,14 +181,17 @@ class EngineInstrumentsPanel {
     const barElem = this.elements[`${fieldKey}Bar`];
     const badgeElem = this.elements[`${fieldKey}Badge`];
 
-    if (valElem) valElem.innerText = '--';
+    if (valElem) valElem.innerText = 'nodata';
     if (barElem) {
       barElem.style.width = '0%';
       if (fieldKey === 'elevator') {
         barElem.style.left = '50%';
       }
     }
-    if (badgeElem) badgeElem.classList.remove('hidden');
+    if (badgeElem) {
+      badgeElem.innerText = 'nodata';
+      badgeElem.classList.remove('hidden');
+    }
   }
 
   setAllNoData() {

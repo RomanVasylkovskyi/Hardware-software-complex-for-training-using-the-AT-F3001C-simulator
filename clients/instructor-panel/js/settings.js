@@ -322,27 +322,37 @@ class TelemetrySettingsManager {
     this.currentMode = data.mode || (data.is_running ? 'replay' : 'live');
     this.isReplayRunning = Boolean(data.is_running);
 
+    const isLiveActive = (data.connection === 'CONNECTED' || data.connection === 'ONLINE') &&
+      ((data.packet_rate_hz || 0) > 0 || (data.packets_received || 0) > 0) &&
+      (data.time_since_last_packet_sec === undefined || data.time_since_last_packet_sec < 4.0);
+
     // Update Header Pill
     if (this.headerBadge) {
       if (this.currentMode === 'replay' && this.isReplayRunning) {
         this.headerBadge.className = 'source-mode-tag replay';
         const name = data.file_name || 'REPLAY';
         this.headerBadge.innerText = `REPLAY: ${name}`;
-      } else {
+      } else if (isLiveActive) {
         this.headerBadge.className = 'source-mode-tag live';
         this.headerBadge.innerText = 'LIVE UDP';
+      } else {
+        this.headerBadge.className = 'source-mode-tag nodata';
+        this.headerBadge.innerText = 'nodata';
       }
     }
 
-    // Update Footer Mode Badge in Modal
+    // Update Mode Badge in Settings Header
     const footerMode = document.getElementById('settings-active-mode-badge');
     if (footerMode) {
       if (this.currentMode === 'replay' && this.isReplayRunning) {
         footerMode.className = 'mode-badge-replay';
         footerMode.innerText = `РЕПЛЕЙ (${data.file_name || 'ФАЙЛ'})`;
-      } else {
+      } else if (isLiveActive) {
         footerMode.className = 'mode-badge-live';
         footerMode.innerText = 'ОНЛАЙН (UDP СИМУЛЯТОР)';
+      } else {
+        footerMode.className = 'mode-badge-nodata';
+        footerMode.innerText = 'nodata';
       }
     }
 
@@ -352,21 +362,23 @@ class TelemetrySettingsManager {
     const livePkts = document.getElementById('live-sim-packets');
 
     if (liveStatus) {
-      if (this.currentMode === 'live') {
-        const isConnected = data.connection === 'CONNECTED';
-        liveStatus.className = isConnected ? 'info-val badge-connected' : 'info-val badge-offline';
-        liveStatus.innerText = isConnected ? 'АКТИВНИЙ ПОТІК (ПІДКЛЮЧЕНО)' : 'ОЧІКУВАННЯ ДАНИХ СИМУЛЯТОРА';
+      if (this.isReplayRunning) {
+        liveStatus.className = 'flat-val badge-idle';
+        liveStatus.innerText = 'РЕЖИМ РЕПЛЕЮ';
+      } else if (isLiveActive) {
+        liveStatus.className = 'flat-val badge-connected';
+        liveStatus.innerText = 'АКТИВНИЙ ПОТІК (ПІДКЛЮЧЕНО)';
       } else {
-        liveStatus.className = 'info-val badge-idle';
-        liveStatus.innerText = 'РЕЖИМ РЕПЛЕЮ (ОНЛАЙН ПРИЗУПИНЕНО)';
+        liveStatus.className = 'flat-val badge-nodata';
+        liveStatus.innerText = 'nodata';
       }
     }
 
     if (liveHz) {
-      liveHz.innerText = `${data.packet_rate_hz || 0} Hz`;
+      liveHz.innerText = isLiveActive ? `${data.packet_rate_hz || 0} Hz` : 'nodata';
     }
     if (livePkts) {
-      livePkts.innerText = `${data.packets_received || 0}`;
+      livePkts.innerText = isLiveActive ? `${data.packets_received || 0}` : 'nodata';
     }
 
     // Update Server Replay Tab Progress
@@ -376,19 +388,23 @@ class TelemetrySettingsManager {
     const serverState = document.getElementById('server-replay-state');
 
     const pct = typeof data.progress_pct === 'number' ? data.progress_pct : 0.0;
-    if (serverPct) serverPct.innerText = `${pct.toFixed(1)}%`;
-    if (serverFill) serverFill.style.width = `${pct}%`;
-    if (serverRecords) {
-      serverRecords.innerText = `Записів: ${data.current_index || 0} / ${data.total_records || 0}`;
-    }
     const isLocal = Boolean(data.is_local || (data.file_name && data.file_name.startsWith('upload_')) || (this.selectedLocalFile && data.file_name === this.selectedLocalFile.name));
 
+    if (serverPct) {
+      serverPct.innerText = (this.isReplayRunning && !isLocal) ? `${pct.toFixed(1)}%` : 'nodata';
+    }
+    if (serverFill) {
+      serverFill.style.width = (this.isReplayRunning && !isLocal) ? `${pct}%` : '0%';
+    }
+    if (serverRecords) {
+      serverRecords.innerText = (this.isReplayRunning && !isLocal) ? `Записів: ${data.current_index || 0} / ${data.total_records || 0}` : 'nodata';
+    }
     if (serverState) {
       if (this.isReplayRunning && !isLocal) {
         serverState.innerText = `СТАТУС: ВІДТВОРЕННЯ (${data.speed || 1}x, ${data.loop ? 'LOOP' : 'ONCE'})`;
         serverState.style.color = 'var(--avionics-cyan)';
       } else {
-        serverState.innerText = 'СТАТУС: ЗУПИНЕНО';
+        serverState.innerText = 'nodata';
         serverState.style.color = '#94a3b8';
       }
     }
@@ -399,19 +415,21 @@ class TelemetrySettingsManager {
     const localRecords = document.getElementById('local-replay-records');
     const localState = document.getElementById('local-replay-state');
 
-    if (this.isReplayRunning && isLocal) {
-      if (localPct) localPct.innerText = `${pct.toFixed(1)}%`;
-      if (localFill) localFill.style.width = `${pct}%`;
-      if (localRecords) {
-        localRecords.innerText = `Записів: ${data.current_index || 0} / ${data.total_records || 0}`;
-      }
-      if (localState) {
+    if (localPct) {
+      localPct.innerText = (this.isReplayRunning && isLocal) ? `${pct.toFixed(1)}%` : 'nodata';
+    }
+    if (localFill) {
+      localFill.style.width = (this.isReplayRunning && isLocal) ? `${pct}%` : '0%';
+    }
+    if (localRecords) {
+      localRecords.innerText = (this.isReplayRunning && isLocal) ? `Записів: ${data.current_index || 0} / ${data.total_records || 0}` : 'nodata';
+    }
+    if (localState) {
+      if (this.isReplayRunning && isLocal) {
         localState.innerText = `СТАТУС: ВІДТВОРЕННЯ (${data.speed || 1}x, ${data.loop ? 'LOOP' : 'ONCE'})`;
         localState.style.color = 'var(--avionics-cyan)';
-      }
-    } else {
-      if (localState) {
-        localState.innerText = 'СТАТУС: ЗУПИНЕНО';
+      } else {
+        localState.innerText = 'nodata';
         localState.style.color = '#94a3b8';
       }
     }
@@ -432,40 +450,83 @@ class TelemetrySettingsManager {
     if (!telemetry || !telemetry.status) return;
     const st = telemetry.status;
 
-    if (st.replay_mode) {
-      this.currentMode = 'replay';
-      this.isReplayRunning = true;
-    } else {
-      this.currentMode = 'live';
-      this.isReplayRunning = false;
-    }
+    const isReplay = Boolean(st.replay_mode);
+    const isLive = !isReplay && (st.connection === 'CONNECTED' || st.connection === 'ONLINE') &&
+      ((st.packet_rate_hz || 0) > 0 || (st.packets_received || 0) > 0) &&
+      (st.time_since_last_packet_sec === undefined || st.time_since_last_packet_sec < 4.0);
 
-    // Header badge synchronization
+    this.currentMode = isReplay ? 'replay' : 'live';
+    this.isReplayRunning = isReplay;
+
+    // Header badge synchronization (if header badge element exists)
     if (this.headerBadge) {
-      if (st.replay_mode) {
+      if (isReplay) {
         this.headerBadge.className = 'source-mode-tag replay';
         if (typeof st.replay_progress_pct === 'number') {
           this.headerBadge.innerText = `REPLAY (${st.replay_progress_pct.toFixed(0)}%)`;
         } else {
           this.headerBadge.innerText = 'REPLAY';
         }
-      } else {
+      } else if (isLive) {
         this.headerBadge.className = 'source-mode-tag live';
         this.headerBadge.innerText = 'LIVE UDP';
+      } else {
+        this.headerBadge.className = 'source-mode-tag nodata';
+        this.headerBadge.innerText = 'nodata';
       }
     }
 
-    // Smoothly update progress bars if elements exist
+    // Active mode badge in settings header
+    const footerMode = document.getElementById('settings-active-mode-badge');
+    if (footerMode) {
+      if (isReplay) {
+        footerMode.className = 'mode-badge-replay';
+        footerMode.innerText = `РЕПЛЕЙ (${st.replay_file || 'ФАЙЛ'})`;
+      } else if (isLive) {
+        footerMode.className = 'mode-badge-live';
+        footerMode.innerText = 'ОНЛАЙН (UDP СИМУЛЯТОР)';
+      } else {
+        footerMode.className = 'mode-badge-nodata';
+        footerMode.innerText = 'nodata';
+      }
+    }
+
+    // Update live indicators in real-time
+    const liveStatus = document.getElementById('live-sim-status');
+    const liveHz = document.getElementById('live-sim-hz');
+    const livePkts = document.getElementById('live-sim-packets');
+    if (liveStatus) {
+      if (isReplay) {
+        liveStatus.className = 'flat-val badge-idle';
+        liveStatus.innerText = 'РЕЖИМ РЕПЛЕЮ';
+      } else if (isLive) {
+        liveStatus.className = 'flat-val badge-connected';
+        liveStatus.innerText = 'АКТИВНИЙ ПОТІК (ПІДКЛЮЧЕНО)';
+      } else {
+        liveStatus.className = 'flat-val badge-nodata';
+        liveStatus.innerText = 'nodata';
+      }
+    }
+    if (liveHz) {
+      liveHz.innerText = isLive ? `${(st.packet_rate_hz || 0).toFixed(0)} Hz` : 'nodata';
+    }
+    if (livePkts) {
+      livePkts.innerText = isLive ? `${st.packets_received || 0}` : 'nodata';
+    }
+
+    // Progress bar for active replay
     const pct = typeof st.replay_progress_pct === 'number' ? st.replay_progress_pct : 0.0;
     const serverPct = document.getElementById('server-replay-pct');
     const serverFill = document.getElementById('server-replay-fill');
     const localPct = document.getElementById('local-replay-pct');
     const localFill = document.getElementById('local-replay-fill');
 
-    if (serverPct) serverPct.innerText = `${pct.toFixed(1)}%`;
-    if (serverFill) serverFill.style.width = `${pct}%`;
-    if (localPct) localPct.innerText = `${pct.toFixed(1)}%`;
-    if (localFill) localFill.style.width = `${pct}%`;
+    if (isReplay) {
+      if (serverPct) serverPct.innerText = `${pct.toFixed(1)}%`;
+      if (serverFill) serverFill.style.width = `${pct}%`;
+      if (localPct) localPct.innerText = `${pct.toFixed(1)}%`;
+      if (localFill) localFill.style.width = `${pct}%`;
+    }
   }
 
   async activateLiveMode() {

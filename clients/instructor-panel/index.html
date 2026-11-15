@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css?v=3" />
   
   <!-- Custom Avionics CSS -->
-  <link rel="stylesheet" href="css/main.css?v=25" />
+  <link rel="stylesheet" href="css/main.css?v=26" />
 </head>
 <body>
   <!-- HEADER / SYSTEM STATUS BAR -->
@@ -102,108 +102,108 @@
           <div class="gauge-card">
             <div class="gauge-header">
               <span class="gauge-title">TACHOMETER (RPM)</span>
-              <span class="gauge-value" id="eng-rpm-val">--</span>
+              <span class="gauge-value" id="eng-rpm-val">nodata</span>
             </div>
             <div class="gauge-bar-track">
               <div class="gauge-bar-fill" id="eng-rpm-bar"></div>
             </div>
-            <div class="no-data-badge hidden" id="eng-rpm-badge">NO DATA</div>
+            <div class="no-data-badge" id="eng-rpm-badge">nodata</div>
           </div>
 
           <!-- EGT -->
           <div class="gauge-card">
             <div class="gauge-header">
               <span class="gauge-title">EXHAUST TEMP (EGT)</span>
-              <span class="gauge-value" id="eng-egt-val">--</span>
+              <span class="gauge-value" id="eng-egt-val">nodata</span>
             </div>
             <div class="gauge-bar-track">
               <div class="gauge-bar-fill" id="eng-egt-bar"></div>
             </div>
-            <div class="no-data-badge hidden" id="eng-egt-badge">NO DATA</div>
+            <div class="no-data-badge" id="eng-egt-badge">nodata</div>
           </div>
 
           <!-- Oil Pressure (Inverted scale: low pressure is RED, normal 50-90 is GREEN) -->
           <div class="gauge-card">
             <div class="gauge-header">
               <span class="gauge-title">OIL PRESS (PSI)</span>
-              <span class="gauge-value" id="eng-oil-press-val">--</span>
+              <span class="gauge-value" id="eng-oil-press-val">nodata</span>
             </div>
             <div class="gauge-bar-track scale-inverted">
               <div class="gauge-bar-fill" id="eng-oil-press-bar"></div>
             </div>
-            <div class="no-data-badge hidden" id="eng-oil-press-badge">NO DATA</div>
+            <div class="no-data-badge" id="eng-oil-press-badge">nodata</div>
           </div>
 
           <!-- Oil Temperature -->
           <div class="gauge-card">
             <div class="gauge-header">
               <span class="gauge-title">OIL TEMP (°C)</span>
-              <span class="gauge-value" id="eng-oil-temp-val">--</span>
+              <span class="gauge-value" id="eng-oil-temp-val">nodata</span>
             </div>
             <div class="gauge-bar-track">
               <div class="gauge-bar-fill" id="eng-oil-temp-bar"></div>
             </div>
-            <div class="no-data-badge hidden" id="eng-oil-temp-badge">NO DATA</div>
+            <div class="no-data-badge" id="eng-oil-temp-badge">nodata</div>
           </div>
 
           <!-- Fuel Flow -->
           <div class="gauge-card">
             <div class="gauge-header">
               <span class="gauge-title">FUEL FLOW (GPH)</span>
-              <span class="gauge-value" id="eng-fuel-flow-val">--</span>
+              <span class="gauge-value" id="eng-fuel-flow-val">nodata</span>
             </div>
             <div class="gauge-bar-track">
               <div class="gauge-bar-fill" id="eng-fuel-flow-bar"></div>
             </div>
-            <div class="no-data-badge hidden" id="eng-fuel-flow-badge">NO DATA</div>
+            <div class="no-data-badge" id="eng-fuel-flow-badge">nodata</div>
           </div>
 
           <!-- Fuel Quantity (Inverted scale: low/empty is RED, full is GREEN) -->
           <div class="gauge-card">
             <div class="gauge-header">
               <span class="gauge-title">FUEL QTY (GAL)</span>
-              <span class="gauge-value" id="eng-fuel-qty-val">--</span>
+              <span class="gauge-value" id="eng-fuel-qty-val">nodata</span>
             </div>
             <div class="gauge-bar-track scale-inverted">
               <div class="gauge-bar-fill" id="eng-fuel-qty-bar"></div>
             </div>
-            <div class="no-data-badge hidden" id="eng-fuel-qty-badge">NO DATA</div>
+            <div class="no-data-badge" id="eng-fuel-qty-badge">nodata</div>
           </div>
 
           <!-- Throttle Lever (Flight Control Position: Neutral Avionics Cyan) -->
           <div class="gauge-card">
             <div class="gauge-header">
               <span class="gauge-title">THROTTLE LEVER</span>
-              <span class="gauge-value" id="ctrl-throttle-val">--</span>
+              <span class="gauge-value" id="ctrl-throttle-val">nodata</span>
             </div>
             <div class="gauge-bar-track scale-controls">
               <div class="gauge-bar-fill" id="ctrl-throttle-bar"></div>
             </div>
-            <div class="no-data-badge hidden" id="ctrl-throttle-badge">NO DATA</div>
+            <div class="no-data-badge" id="ctrl-throttle-badge">nodata</div>
           </div>
 
           <!-- Flaps Position (Flight Control Position: Neutral Avionics Cyan) -->
           <div class="gauge-card">
             <div class="gauge-header">
               <span class="gauge-title">WING FLAPS</span>
-              <span class="gauge-value" id="ctrl-flaps-val">--</span>
+              <span class="gauge-value" id="ctrl-flaps-val">nodata</span>
             </div>
             <div class="gauge-bar-track scale-controls">
               <div class="gauge-bar-fill" id="ctrl-flaps-bar"></div>
             </div>
-            <div class="no-data-badge hidden" id="ctrl-flaps-badge">NO DATA</div>
+            <div class="no-data-badge" id="ctrl-flaps-badge">nodata</div>
           </div>
 
           <!-- Elevator Stick (Flight Control Position: Neutral Avionics Cyan, Bipolar Scale) -->
           <div class="gauge-card">
             <div class="gauge-header">
               <span class="gauge-title">ELEVATOR STICK</span>
-              <span class="gauge-value" id="ctrl-elevator-val">--</span>
+              <span class="gauge-value" id="ctrl-elevator-val">nodata</span>
             </div>
             <div class="gauge-bar-track scale-controls scale-bipolar">
               <div class="gauge-bar-fill" id="ctrl-elevator-bar"></div>
             </div>
-            <div class="no-data-badge hidden" id="ctrl-elevator-badge">NO DATA</div>
+            <div class="no-data-badge" id="ctrl-elevator-badge">nodata</div>
           </div>
         </div>
 
@@ -266,19 +266,19 @@
           <!-- Stabilized Approach & ILS Deviation -->
           <div class="analysis-subpanel">
             <div class="subpanel-title">Stabilized Approach Criteria (ICAO)</div>
-            <div id="approach-status-badge" class="status-pill status-neutral">APPROACH: INACTIVE</div>
+            <div id="approach-status-badge" class="status-pill status-offline">APPROACH: nodata</div>
             
             <div class="ils-section">
               <div class="ils-row">
                 <span>GLIDESLOPE DEV (GS):</span>
                 <div id="ils-gs-dots" class="ils-dots-container">
-                  <div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot ils-dot-active ils-green"></div><div class="ils-dot"></div><div class="ils-dot"></div>
+                  <div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div>
                 </div>
               </div>
               <div class="ils-row">
                 <span>LOCALIZER DEV (LOC):</span>
                 <div id="ils-loc-dots" class="ils-dots-container">
-                  <div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot ils-dot-active ils-green"></div><div class="ils-dot"></div><div class="ils-dot"></div>
+                  <div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div>
                 </div>
               </div>
             </div>
@@ -294,15 +294,15 @@
             <div class="hud-grid">
               <div class="hud-item">
                 <div class="hud-lbl">PILOT PRESENCE:</div>
-                <div class="hud-val text-muted" id="hud-pilot-detected">OFFLINE</div>
+                <div class="hud-val text-muted" id="hud-pilot-detected">nodata</div>
               </div>
               <div class="hud-item">
                 <div class="hud-lbl">GAZE VECTOR:</div>
-                <div class="hud-val text-muted" id="hud-gaze-direction">--</div>
+                <div class="hud-val text-muted" id="hud-gaze-direction">nodata</div>
               </div>
               <div class="hud-item" style="grid-column: span 2;">
                 <div class="hud-lbl">ERGONOMICS / POSTURE:</div>
-                <div class="hud-val text-muted" id="hud-posture-alert">--</div>
+                <div class="hud-val text-muted" id="hud-posture-alert">nodata</div>
               </div>
             </div>
           </div>
@@ -320,7 +320,7 @@
         </div>
         <div class="panel-controls">
           <div class="current-active-mode-pill">
-            АКТИВНИЙ РЕЖИМ: <span id="settings-active-mode-badge" class="mode-badge-live">ОНЛАЙН (UDP)</span>
+            АКТИВНИЙ РЕЖИМ: <span id="settings-active-mode-badge" class="mode-badge-nodata">nodata</span>
           </div>
         </div>
       </div>
@@ -367,15 +367,15 @@
                 </div>
                 <div class="flat-data-row">
                   <span class="flat-label">Статус прийому пакетів:</span>
-                  <span id="live-sim-status" class="flat-val badge-offline">ОЧІКУВАННЯ ДАНИХ СИМУЛЯТОРА</span>
+                  <span id="live-sim-status" class="flat-val badge-nodata">nodata</span>
                 </div>
                 <div class="flat-data-row">
                   <span class="flat-label">Частота вхідного потоку:</span>
-                  <span id="live-sim-hz" class="flat-val font-mono">0 Hz</span>
+                  <span id="live-sim-hz" class="flat-val font-mono">nodata</span>
                 </div>
                 <div class="flat-data-row">
                   <span class="flat-label">Отримано UDP пакетів:</span>
-                  <span id="live-sim-packets" class="flat-val font-mono">0</span>
+                  <span id="live-sim-packets" class="flat-val font-mono">nodata</span>
                 </div>
               </div>
 
@@ -439,14 +439,14 @@
               <div class="flat-replay-progress" id="server-replay-status-card">
                 <div class="replay-progress-header">
                   <span>Прогрес реплею:</span>
-                  <span id="server-replay-pct" class="font-mono">0.0%</span>
+                  <span id="server-replay-pct" class="font-mono">nodata</span>
                 </div>
                 <div class="replay-progress-track">
                   <div id="server-replay-fill" class="replay-progress-fill" style="width: 0%;"></div>
                 </div>
                 <div class="replay-progress-sub">
-                  <span id="server-replay-records">Записів: 0 / 0</span>
-                  <span id="server-replay-state">СТАТУС: ЗУПИНЕНО</span>
+                  <span id="server-replay-records">nodata</span>
+                  <span id="server-replay-state">nodata</span>
                 </div>
               </div>
             </div>
@@ -481,8 +481,8 @@
                 <div id="local-file-selected-info" class="file-selected-box hidden">
                   <div class="file-name-label">
                     <span class="file-icon">&#128196;</span>
-                    <span id="selected-file-name" class="font-mono">--</span>
-                    <span id="selected-file-size" class="file-size-tag">0 KB</span>
+                    <span id="selected-file-name" class="font-mono">nodata</span>
+                    <span id="selected-file-size" class="file-size-tag">nodata</span>
                   </div>
                   <button id="btn-remove-selected-file" class="btn-ctrl-icon" title="Видалити вибраний файл">&times;</button>
                 </div>
@@ -508,14 +508,14 @@
               <div class="flat-replay-progress" id="local-replay-status-card">
                 <div class="replay-progress-header">
                   <span>Прогрес завантаженого реплею:</span>
-                  <span id="local-replay-pct" class="font-mono">0.0%</span>
+                  <span id="local-replay-pct" class="font-mono">nodata</span>
                 </div>
                 <div class="replay-progress-track">
                   <div id="local-replay-fill" class="replay-progress-fill" style="width: 0%;"></div>
                 </div>
                 <div class="replay-progress-sub">
-                  <span id="local-replay-records">Записів: 0 / 0</span>
-                  <span id="local-replay-state">СТАТУС: ЗУПИНЕНО</span>
+                  <span id="local-replay-records">nodata</span>
+                  <span id="local-replay-state">nodata</span>
                 </div>
               </div>
             </div>
@@ -539,13 +539,13 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js?v=3"></script>
 
   <!-- Avionics Modular Scripts -->
-  <script src="js/audio.js?v=25"></script>
-  <script src="js/pfd.js?v=25"></script>
-  <script src="js/nd.js?v=25"></script>
-  <script src="js/standby_gauges.js?v=25"></script>
-  <script src="js/engine.js?v=25"></script>
-  <script src="js/alerts.js?v=25"></script>
-  <script src="js/settings.js?v=25"></script>
-  <script src="js/app.js?v=25"></script>
+  <script src="js/audio.js?v=26"></script>
+  <script src="js/pfd.js?v=26"></script>
+  <script src="js/nd.js?v=26"></script>
+  <script src="js/standby_gauges.js?v=26"></script>
+  <script src="js/engine.js?v=26"></script>
+  <script src="js/alerts.js?v=26"></script>
+  <script src="js/settings.js?v=26"></script>
+  <script src="js/app.js?v=26"></script>
 </body>
 </html>
