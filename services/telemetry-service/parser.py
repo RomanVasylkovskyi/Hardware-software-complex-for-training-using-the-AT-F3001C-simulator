@@ -75,9 +75,8 @@ def parse_xplane_datagram(data: bytes) -> Tuple[Optional[Dict[int, List[Optional
     if len(data) < 5:
         return None, f"Datagram too short ({len(data)} bytes, min required is 5 bytes)"
 
-    header = data[:5]
-    if header != XPLANE_DATA_HEADER:
-        return None, f"Invalid packet header: {header!r}, expected {XPLANE_DATA_HEADER!r}"
+    if not data.startswith(b"DATA"):
+        return None, f"Invalid packet header: {data[:5]!r}, expected to start with b'DATA'"
 
     payload = data[5:]
     if len(payload) % RECORD_BYTE_SIZE != 0:
@@ -365,12 +364,41 @@ class TelemetryParser:
         else:
             dyn_quality = ChannelQuality.NO_SIGNAL
 
+        # Vertical speed:
+        # In native X-Plane 11 UDP broadcast, VVI is transmitted in ch4[2] (ft/min).
+        # In custom replays or legacy packets, VVI may be in ch4[1].
+        # If ch4[1] is valid, use ch4[1]. If ch4[1] is None but ch4[2] is valid, use ch4[2].
+        vsi_val: Optional[float] = None
+        if len(ch4) > 1 and ch4[1] is not None:
+            vsi_val = ch4[1]
+        elif len(ch4) > 2 and ch4[2] is not None:
+            vsi_val = ch4[2]
+
+        # Normal G-load:
+        # In native X-Plane 11 UDP, G-normal is in ch4[4] (~1.0 G level).
+        # In legacy / replay packets where ch4[1] was VVI, G-normal was in ch4[2].
+        g_nrml_val: Optional[float] = None
+        if len(ch4) > 1 and ch4[1] is not None:
+            g_nrml_val = ch4[2] if len(ch4) > 2 else None
+        elif len(ch4) > 4 and ch4[4] is not None:
+            g_nrml_val = ch4[4]
+        elif len(ch4) > 2 and ch4[2] is not None and abs(ch4[2]) < 10.0:
+            g_nrml_val = ch4[2]
+
+        # Axial & Side G-loads:
+        if len(ch4) > 1 and ch4[1] is not None:
+            g_axil_val = ch4[3] if len(ch4) > 3 else None
+            g_side_val = ch4[4] if len(ch4) > 4 else None
+        else:
+            g_axil_val = ch4[5] if len(ch4) > 5 else None
+            g_side_val = ch4[6] if len(ch4) > 6 else None
+
         dynamics = Dynamics(
             mach_number=ch4[0] if len(ch4) > 0 else None,
-            vertical_speed_fpm=ch4[1] if len(ch4) > 1 else None,
-            g_load_normal=ch4[2] if len(ch4) > 2 else None,
-            g_load_axial=ch4[3] if len(ch4) > 3 else None,
-            g_load_side=ch4[4] if len(ch4) > 4 else None,
+            vertical_speed_fpm=vsi_val,
+            g_load_normal=g_nrml_val,
+            g_load_axial=g_axil_val,
+            g_load_side=g_side_val,
             aoa_alpha_deg=ch18[0] if len(ch18) > 0 else None,
             sideslip_beta_deg=ch18[1] if len(ch18) > 1 else None,
             hpath_deg=ch18[2] if len(ch18) > 2 else None,
@@ -409,13 +437,17 @@ class TelemetryParser:
             last_update=now_dt if ctrl_quality == ChannelQuality.GOOD else None,
         )
 
-        # ----------------- Channels 25, 26, 37, 39, 43, 47, 62: Engine -----------------
+        # ----------------- Channels 25, 26, 37, 39, 43, 45, 46, 47, 49, 50, 62: Engine -----------------
         ch25_quality = self._determine_channel_quality(25, now)
         ch26_quality = self._determine_channel_quality(26, now)
         ch37_quality = self._determine_channel_quality(37, now)
         ch39_quality = self._determine_channel_quality(39, now)
         ch43_quality = self._determine_channel_quality(43, now)
+        ch45_quality = self._determine_channel_quality(45, now)
+        ch46_quality = self._determine_channel_quality(46, now)
         ch47_quality = self._determine_channel_quality(47, now)
+        ch49_quality = self._determine_channel_quality(49, now)
+        ch50_quality = self._determine_channel_quality(50, now)
         ch62_quality = self._determine_channel_quality(62, now)
 
         ch25 = self._raw_channels.get(25, [None] * 8)
@@ -423,10 +455,18 @@ class TelemetryParser:
         ch37 = self._raw_channels.get(37, [None] * 8)
         ch39 = self._raw_channels.get(39, [None] * 8)
         ch43 = self._raw_channels.get(43, [None] * 8)
+        ch45 = self._raw_channels.get(45, [None] * 8)
+        ch46 = self._raw_channels.get(46, [None] * 8)
         ch47 = self._raw_channels.get(47, [None] * 8)
+        ch49 = self._raw_channels.get(49, [None] * 8)
+        ch50 = self._raw_channels.get(50, [None] * 8)
         ch62 = self._raw_channels.get(62, [None] * 8)
 
-        eng_qualities = (ch25_quality, ch26_quality, ch37_quality, ch39_quality, ch43_quality, ch47_quality, ch62_quality)
+        eng_qualities = (
+            ch25_quality, ch26_quality, ch37_quality, ch39_quality,
+            ch43_quality, ch45_quality, ch46_quality, ch47_quality,
+            ch49_quality, ch50_quality, ch62_quality
+        )
         if any(q == ChannelQuality.GOOD for q in eng_qualities):
             eng_quality = ChannelQuality.GOOD
         elif any(q == ChannelQuality.STALE for q in eng_qualities):
@@ -434,15 +474,77 @@ class TelemetryParser:
         else:
             eng_quality = ChannelQuality.NO_SIGNAL
 
+        # Oil Pressure (PSI):
+        # Native X-Plane 11 sends oil pressure in ch49[0] (~80 PSI).
+        # Replay/legacy sends in ch39[1].
+        oil_press_val: Optional[float] = None
+        if len(ch49) > 0 and ch49[0] is not None and ch49[0] > 0.05:
+            oil_press_val = ch49[0]
+        elif len(ch39) > 1 and ch39[1] is not None and ch39[1] > 0.05:
+            oil_press_val = ch39[1]
+        elif len(ch49) > 0 and ch49[0] is not None:
+            oil_press_val = ch49[0]
+        elif len(ch39) > 1 and ch39[1] is not None:
+            oil_press_val = ch39[1]
+
+        # Oil Temperature (°C):
+        # Native X-Plane 11 sends oil temp in ch50[0] in °F (~175 °F).
+        # Convert °F to °C: (F - 32) * 5 / 9.
+        # Replay/legacy sends in ch39[0] in °C.
+        oil_temp_val: Optional[float] = None
+        if len(ch50) > 0 and ch50[0] is not None and ch50[0] > 32.0:
+            oil_temp_val = (ch50[0] - 32.0) * 5.0 / 9.0
+        elif len(ch39) > 0 and ch39[0] is not None and ch39[0] > 0.05:
+            oil_temp_val = ch39[0]
+        elif len(ch50) > 0 and ch50[0] is not None:
+            oil_temp_val = (ch50[0] - 32.0) * 5.0 / 9.0
+        elif len(ch39) > 0 and ch39[0] is not None:
+            oil_temp_val = ch39[0]
+
+        # Exhaust Gas Temperature EGT (°C):
+        # Native X-Plane 11 sends EGT in ch46[0] in °C (~485 °C) or ch47[0] in °F (~880 °F).
+        # ch43[0] is ambient/outside air temperature (~24 °C), only fallback if no EGT channel.
+        egt_val: Optional[float] = None
+        if len(ch46) > 0 and ch46[0] is not None and ch46[0] > 50.0:
+            egt_val = ch46[0]
+        elif len(ch47) > 0 and ch47[0] is not None and ch47[0] > 150.0:
+            egt_val = (ch47[0] - 32.0) * 5.0 / 9.0
+        elif len(ch43) > 0 and ch43[0] is not None and ch43[0] > 50.0:
+            egt_val = ch43[0]
+        elif len(ch46) > 0 and ch46[0] is not None:
+            egt_val = ch46[0]
+        elif len(ch43) > 0 and ch43[0] is not None:
+            egt_val = ch43[0]
+
+        # Fuel Flow (GPH):
+        # Native X-Plane 11 sends fuel flow in ch45[0] (e.g. ~12 GPH).
+        # Replay may send in ch47[0] (small value < 50 GPH). Note: ch47[0] in live X-Plane is EGT in °F (>500)!
+        fuel_flow_val: Optional[float] = None
+        if len(ch45) > 0 and ch45[0] is not None and ch45[0] > 0.01:
+            fuel_flow_val = ch45[0]
+        elif len(ch47) > 0 and ch47[0] is not None and 0.01 < ch47[0] < 50.0:
+            fuel_flow_val = ch47[0]
+        elif len(ch45) > 0 and ch45[0] is not None:
+            fuel_flow_val = ch45[0]
+
+        # Fuel Quantity (GAL):
+        # In X-Plane 11, ch62[0] is left tank and ch62[1] is right tank. Total = sum of tanks.
+        # In single-value replays, ch62[0] is total and ch62[1] is 0 or None.
+        fuel_qty_val: Optional[float] = None
+        if len(ch62) > 1 and ch62[0] is not None and ch62[1] is not None and ch62[1] > 0.05:
+            fuel_qty_val = ch62[0] + ch62[1]
+        elif len(ch62) > 0 and ch62[0] is not None:
+            fuel_qty_val = ch62[0]
+
         engine = Engine(
             throttle_ratio=ch25[0] if len(ch25) > 0 else None,
             engine_power_ratio=ch26[0] if len(ch26) > 0 else None,
             rpm=ch37[0] if len(ch37) > 0 else None,
-            oil_temp_degc=ch39[0] if len(ch39) > 0 else None,
-            oil_pressure_psi=ch39[1] if len(ch39) > 1 else None,
-            egt_degc=ch43[0] if len(ch43) > 0 else None,
-            fuel_flow_gph=ch47[0] if len(ch47) > 0 else None,
-            fuel_quantity_gal=ch62[0] if len(ch62) > 0 else None,
+            oil_temp_degc=oil_temp_val,
+            oil_pressure_psi=oil_press_val,
+            egt_degc=egt_val,
+            fuel_flow_gph=fuel_flow_val,
+            fuel_quantity_gal=fuel_qty_val,
             quality=eng_quality,
             last_update=now_dt if eng_quality == ChannelQuality.GOOD else None,
         )
