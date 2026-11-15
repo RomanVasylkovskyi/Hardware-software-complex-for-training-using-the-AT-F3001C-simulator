@@ -1472,25 +1472,25 @@ class StandbyVsiGauge {
 
     if (fpm >= 0) {
       if (fpm <= 1000) {
-        // 180 deg down to 90 deg (90 degrees span)
-        const deg = 180 - (fpm / 1000) * 90;
+        // 180 deg up to 270 deg (clockwise to 12 o'clock / UP, 90 degrees span)
+        const deg = 180 + (fpm / 1000) * 90;
         return (deg * Math.PI) / 180;
       } else {
-        // 90 deg down to 15 deg (75 degrees span)
+        // 270 deg up to 345 deg (clockwise towards 3 o'clock, 75 degrees span)
         const clamped = Math.min(2000, fpm);
-        const deg = 90 - ((clamped - 1000) / 1000) * 75;
+        const deg = 270 + ((clamped - 1000) / 1000) * 75;
         return (deg * Math.PI) / 180;
       }
     } else {
       const absFpm = Math.abs(fpm);
       if (absFpm <= 1000) {
-        // 180 deg up to 270 deg (90 degrees span)
-        const deg = 180 + (absFpm / 1000) * 90;
+        // 180 deg down to 90 deg (counter-clockwise to 6 o'clock / DN, 90 degrees span)
+        const deg = 180 - (absFpm / 1000) * 90;
         return (deg * Math.PI) / 180;
       } else {
-        // 270 deg up to 345 deg (75 degrees span)
+        // 90 deg down to 15 deg (counter-clockwise towards 3 o'clock, 75 degrees span)
         const clamped = Math.min(2000, absFpm);
-        const deg = 270 + ((clamped - 1000) / 1000) * 75;
+        const deg = 90 - ((clamped - 1000) / 1000) * 75;
         return (deg * Math.PI) / 180;
       }
     }
