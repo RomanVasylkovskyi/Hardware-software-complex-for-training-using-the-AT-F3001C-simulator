@@ -11,12 +11,11 @@ class TelemetrySettingsManager {
     this.cardEl = document.getElementById('card-settings');
     this.headerBadge = document.getElementById('hdr-source-indicator');
 
-    // Tabs
-    this.tabBtns = document.querySelectorAll('.settings-tab-btn');
-    this.panels = {
-      live: document.getElementById('settings-panel-live'),
-      'server-file': document.getElementById('settings-panel-server-file'),
-      'local-file': document.getElementById('settings-panel-local-file'),
+    // Flat Mode Columns
+    this.cols = {
+      live: document.getElementById('col-live'),
+      server: document.getElementById('col-server'),
+      local: document.getElementById('col-local'),
     };
 
     // State
@@ -36,15 +35,7 @@ class TelemetrySettingsManager {
   }
 
   bindEvents() {
-    // Tab Navigation
-    this.tabBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const tabId = btn.dataset.modeTab;
-        if (tabId) this.switchTab(tabId);
-      });
-    });
-
-    // --- TAB 1: Live Controls ---
+    // --- MODE 1: Live Controls ---
     const btnActivateLive = document.getElementById('btn-activate-live');
     if (btnActivateLive) {
       btnActivateLive.addEventListener('click', () => this.activateLiveMode());
@@ -171,26 +162,34 @@ class TelemetrySettingsManager {
   }
 
   switchTab(tabId) {
-    this.tabBtns.forEach(btn => {
-      if (btn.dataset.modeTab === tabId) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
-    });
+    // Legacy compatibility stub
+  }
 
-    Object.keys(this.panels).forEach(key => {
-      const panel = this.panels[key];
-      if (panel) {
-        if (key === tabId) {
-          panel.classList.remove('hidden');
-          panel.classList.add('active');
-        } else {
-          panel.classList.add('hidden');
-          panel.classList.remove('active');
-        }
+  highlightActiveColumn(data) {
+    if (!this.cols || !this.cols.live) {
+      this.cols = {
+        live: document.getElementById('col-live'),
+        server: document.getElementById('col-server'),
+        local: document.getElementById('col-local'),
+      };
+    }
+
+    const isReplay = this.currentMode === 'replay' && this.isReplayRunning;
+    if (!isReplay) {
+      this.cols.live?.classList.add('active-col');
+      this.cols.server?.classList.remove('active-col');
+      this.cols.local?.classList.remove('active-col');
+    } else {
+      this.cols.live?.classList.remove('active-col');
+      const isLocal = data && (data.is_local || (data.file_name && data.file_name.startsWith('upload_')) || (this.selectedLocalFile && data.file_name === this.selectedLocalFile.name));
+      if (isLocal) {
+        this.cols.local?.classList.add('active-col');
+        this.cols.server?.classList.remove('active-col');
+      } else {
+        this.cols.server?.classList.add('active-col');
+        this.cols.local?.classList.remove('active-col');
       }
-    });
+    }
   }
 
   async fetchInitialStatus() {
@@ -332,8 +331,10 @@ class TelemetrySettingsManager {
     if (serverRecords) {
       serverRecords.innerText = `Записів: ${data.current_index || 0} / ${data.total_records || 0}`;
     }
+    const isLocal = Boolean(data.is_local || (data.file_name && data.file_name.startsWith('upload_')) || (this.selectedLocalFile && data.file_name === this.selectedLocalFile.name));
+
     if (serverState) {
-      if (this.isReplayRunning) {
+      if (this.isReplayRunning && !isLocal) {
         serverState.innerText = `СТАТУС: ВІДТВОРЕННЯ (${data.speed || 1}x, ${data.loop ? 'LOOP' : 'ONCE'})`;
         serverState.style.color = 'var(--avionics-cyan)';
       } else {
@@ -342,24 +343,31 @@ class TelemetrySettingsManager {
       }
     }
 
-    // Update Local Replay Tab Progress (if active)
-    const localCard = document.getElementById('local-replay-status-card');
+    // Update Local Replay Progress
     const localPct = document.getElementById('local-replay-pct');
     const localFill = document.getElementById('local-replay-fill');
     const localRecords = document.getElementById('local-replay-records');
     const localState = document.getElementById('local-replay-state');
 
-    if (this.isReplayRunning && localCard) {
-      localCard.classList.remove('hidden');
+    if (this.isReplayRunning && isLocal) {
       if (localPct) localPct.innerText = `${pct.toFixed(1)}%`;
       if (localFill) localFill.style.width = `${pct}%`;
       if (localRecords) {
         localRecords.innerText = `Записів: ${data.current_index || 0} / ${data.total_records || 0}`;
       }
       if (localState) {
-        localState.innerText = `СТАТУС: АКТИВНО (${data.speed || 1}x)`;
+        localState.innerText = `СТАТУС: ВІДТВОРЕННЯ (${data.speed || 1}x, ${data.loop ? 'LOOP' : 'ONCE'})`;
+        localState.style.color = 'var(--avionics-cyan)';
+      }
+    } else {
+      if (localState) {
+        localState.innerText = 'СТАТУС: ЗУПИНЕНО';
+        localState.style.color = '#94a3b8';
       }
     }
+
+    // Highlight the active column
+    this.highlightActiveColumn(data);
   }
 
   // Real-time update from incoming WebSocket telemetry snapshot
@@ -368,6 +376,14 @@ class TelemetrySettingsManager {
     const st = telemetry.status;
 
     if (st.replay_mode) {
+      this.currentMode = 'replay';
+      this.isReplayRunning = true;
+    } else {
+      this.currentMode = 'live';
+      this.isReplayRunning = false;
+    }
+
+    this.highlightActiveColumn(st);
       this.currentMode = 'replay';
       this.isReplayRunning = true;
     }

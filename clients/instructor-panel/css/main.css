@@ -1951,150 +1951,206 @@ body.mode-settings #card-settings {
   color: #ef4444;
 }
 
-/* Mode Selector Tabs */
-.settings-mode-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  background: #04070f;
-  border-bottom: 1px solid #16243a;
-  padding: 4px 8px 0;
-  gap: 4px;
-}
-
-.settings-tab-btn {
-  background: #091222;
-  border: 1px solid #16243a;
-  border-bottom: none;
-  color: #7d90a6;
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  font-weight: 700;
-  padding: 10px 6px;
-  border-radius: 6px 6px 0 0;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.settings-tab-btn:hover {
-  color: #e2e8f0;
-  background: #0d1a30;
-}
-
-.settings-tab-btn.active {
-  background: #0f1e38;
-  color: var(--avionics-cyan);
-  border-color: #38bdf8;
-  border-bottom: 2px solid var(--avionics-cyan);
-}
-
-/* Settings Page Layout */
-.settings-page-body {
-  display: flex;
-  flex-direction: column;
+/* ================= TELEMETRY SOURCE & SETTINGS PAGE (FLAT 3-COLUMN LAYOUT) ================= */
+.settings-page-body-flat {
   flex: 1;
-  background: #080f1e;
+  background: #040813;
   overflow: hidden;
   padding: 0;
-}
-
-.settings-page-nav {
-  background: #04070f;
-  border-bottom: 1px solid #16243a;
-  padding: 8px 16px 0;
-}
-
-.settings-page-nav .settings-mode-tabs {
   display: flex;
-  gap: 8px;
-  background: transparent;
-  border-bottom: none;
-  padding: 0;
 }
 
-.settings-page-nav .settings-tab-btn {
-  padding: 10px 18px;
-  font-size: 0.74rem;
-  border-radius: 6px 6px 0 0;
-}
-
-/* Tab Body Panels */
-.settings-tab-body {
-  padding: 24px;
-  flex: 1;
-  overflow-y: auto;
-  background: radial-gradient(circle at 50% 20%, #0d172b 0%, #040813 100%);
-}
-
-.settings-grid-columns {
+.settings-flat-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  max-width: 1280px;
-  margin: 0 auto;
+  grid-template-columns: repeat(3, 1fr);
   width: 100%;
+  height: 100%;
 }
 
-.settings-card-col {
-  background: #080f1e;
-  border: 1px solid #16243a;
-  border-radius: 8px;
-  padding: 20px 22px;
+.settings-col {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  padding: 24px 28px;
+  border-right: 1px solid #142136;
+  background: #050a14;
+  overflow-y: auto;
+  position: relative;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.settings-col:last-child {
+  border-right: none;
+}
+
+/* Active Mode Column Highlight */
+.settings-col.active-col {
+  background: rgba(2, 132, 199, 0.04);
+  box-shadow: inset 0 3px 0 0 var(--avionics-cyan);
+}
+
+.settings-col.active-col .settings-col-tag {
+  color: var(--avionics-cyan);
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.settings-col-header {
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #142136;
+}
+
+.settings-col-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border: 1px solid #1e293b;
+  border-radius: 3px;
+  margin-bottom: 8px;
+  text-transform: uppercase;
 }
 
 .settings-col-title {
-  font-size: 0.78rem;
+  margin: 0;
+  font-size: 0.88rem;
   font-weight: 700;
-  color: var(--avionics-cyan);
+  color: #e2e8f0;
+  letter-spacing: 0.04em;
   font-family: var(--font-mono);
-  letter-spacing: 0.05em;
-  border-bottom: 1px solid #16243a;
-  padding-bottom: 10px;
+}
+
+.settings-col-content {
+  flex: 1;
   display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Flat Data Rows */
+.flat-data-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.flat-data-row {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(20, 33, 54, 0.8);
+  font-size: 0.76rem;
+}
+
+.flat-label {
+  color: #94a3b8;
+  font-size: 0.74rem;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+.flat-val {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.flat-val.font-accent {
+  color: var(--avionics-cyan);
+}
+
+/* Flat Form Fields */
+.flat-form-field {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
-.settings-desc-box {
+/* Flat Replay Progress */
+.flat-replay-progress {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(20, 33, 54, 0.8);
+  border-bottom: 1px solid rgba(20, 33, 54, 0.8);
 }
 
-.settings-features-list {
+/* Flat File Drop Zone */
+.file-drop-zone-flat {
+  border: 1px dashed #1e3a63;
+  border-radius: 4px;
+  background: rgba(4, 8, 19, 0.6);
+  padding: 20px 14px;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.file-drop-zone-flat:hover,
+.file-drop-zone-flat.drag-active {
+  border-color: #38bdf8;
+  background: rgba(2, 132, 199, 0.08);
+}
+
+/* Column Footer & Action Buttons */
+.settings-col-footer {
+  margin-top: auto;
+  padding-top: 24px;
+}
+
+.settings-col-footer .btn-action {
+  width: 100%;
+}
+
+.flat-desc-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.flat-desc-label {
+  font-size: 0.70rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: #64748b;
+  letter-spacing: 0.05em;
+}
+
+.flat-desc-text {
+  font-size: 0.73rem;
+  color: #94a3b8;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.flat-features-list {
   margin: 0;
   padding-left: 18px;
   color: #94a3b8;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   line-height: 1.6;
 }
 
-.settings-features-list li {
-  margin-bottom: 6px;
+.flat-features-list li {
+  margin-bottom: 4px;
 }
 
-.settings-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.settings-panel.hidden {
-  display: none !important;
-}
-
-@media (max-width: 800px) {
-  .settings-grid-columns {
+@media (max-width: 1024px) {
+  .settings-flat-grid {
     grid-template-columns: 1fr;
-    gap: 16px;
+    overflow-y: auto;
+  }
+  .settings-col {
+    border-right: none;
+    border-bottom: 1px solid #142136;
+    overflow-y: visible;
   }
 }
 
