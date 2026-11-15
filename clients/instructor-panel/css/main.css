@@ -431,16 +431,18 @@ main.dashboard-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1.25fr 1fr;
-  gap: 10px;
-  padding: 10px;
-  height: calc(100vh - 58px);
+  gap: 1px;
+  padding: 0;
+  height: calc(100vh - 56px);
+  height: calc(100dvh - 56px);
   overflow: hidden;
+  background-color: var(--bg-card-border);
 }
 
 .panel-card {
   background-color: var(--bg-card);
-  border: 1px solid var(--bg-card-border);
-  border-radius: 8px;
+  border: none;
+  border-radius: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1019,7 +1021,10 @@ main.dashboard-grid {
 
 body.mode-all main.dashboard-grid {
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-rows: 1.25fr 1fr;
+  gap: 1px !important;
+  padding: 0 !important;
+  background-color: var(--bg-card-border) !important;
 }
 
 body.mode-pfd main.dashboard-grid,
@@ -1030,7 +1035,8 @@ body.mode-safety main.dashboard-grid,
 body.mode-settings main.dashboard-grid {
   grid-template-columns: 1fr !important;
   grid-template-rows: 1fr !important;
-  padding: 8px;
+  padding: 0 !important;
+  gap: 0 !important;
 }
 
 /* Hide other panels when in single-panel mode */
@@ -1433,8 +1439,9 @@ body.mode-settings #card-settings {
     height: calc(100dvh - 74px) !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
-    gap: 8px !important;
-    padding: 8px !important;
+    gap: 1px !important;
+    padding: 0 !important;
+    background-color: var(--bg-card-border) !important;
   }
 
   body.mode-all #card-pfd,
@@ -1457,7 +1464,8 @@ body.mode-settings #card-settings {
     height: calc(100dvh - 74px) !important;
     grid-template-columns: 1fr !important;
     grid-template-rows: 1fr !important;
-    padding: 6px !important;
+    padding: 0 !important;
+    gap: 0 !important;
     overflow: hidden !important;
   }
 
@@ -1570,8 +1578,9 @@ body.mode-settings #card-settings {
     height: calc(100dvh - 74px) !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
-    gap: 8px !important;
-    padding: 6px !important;
+    gap: 1px !important;
+    padding: 0 !important;
+    background-color: var(--bg-card-border) !important;
   }
 
   body.mode-all #card-pfd {
@@ -1603,7 +1612,8 @@ body.mode-settings #card-settings {
     height: calc(100dvh - 74px) !important;
     grid-template-columns: 1fr !important;
     grid-template-rows: 1fr !important;
-    padding: 4px !important;
+    padding: 0 !important;
+    gap: 0 !important;
     overflow: hidden !important;
   }
 
@@ -1833,14 +1843,18 @@ body.mode-settings #card-settings {
 
   main.dashboard-grid {
     height: calc(100dvh - 38px) !important;
-    padding: 4px !important;
+    padding: 0 !important;
+    gap: 1px !important;
+    background-color: var(--bg-card-border) !important;
   }
 
   body.mode-all main.dashboard-grid {
     grid-template-columns: 1fr 1fr !important;
     grid-template-rows: 1fr 1fr !important;
     overflow: hidden !important;
-    gap: 4px !important;
+    gap: 1px !important;
+    padding: 0 !important;
+    background-color: var(--bg-card-border) !important;
   }
 
   #card-pfd, #card-nd, #card-engine, #card-analysis {
