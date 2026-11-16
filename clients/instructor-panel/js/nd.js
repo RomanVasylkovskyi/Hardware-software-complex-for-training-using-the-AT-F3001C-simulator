@@ -112,11 +112,20 @@ const GarminElevationLayer = L.GridLayer.extend({
               out[i + 2] = 16;  // B
               out[i + 3] = 235; // A
             } else {
-              // DARK NAVY / BLACK: Safe Clearance Zone (> 1000 FT below aircraft)
-              out[i] = 10;
-              out[i + 1] = 16;
-              out[i + 2] = 26;
-              out[i + 3] = 215;
+              // GREEN: Safe Clearance Zone (> 1000 FT below aircraft)
+              if (elevM <= 0) {
+                // Water body / sea level (Deep navy blue)
+                out[i] = 15;
+                out[i + 1] = 45;
+                out[i + 2] = 95;
+                out[i + 3] = 240;
+              } else {
+                // Safe ground terrain: Garmin TAWS Green
+                out[i] = 38;
+                out[i + 1] = 138;
+                out[i + 2] = 52;
+                out[i + 3] = 235;
+              }
             }
           } else {
             // Authentic Garmin G1000 Topo Hypsometric Mode
@@ -384,7 +393,7 @@ class NavigationDisplay {
         <div class="legend-title">GARMIN G1000 TAWS</div>
         <div class="legend-item"><span class="color-box" style="background:#ee1c1c;"></span> РЕЛЬЄФ ВИЩЕ (+100 FT)</div>
         <div class="legend-item"><span class="color-box" style="background:#fcd310;"></span> ЗАПАС &lt; 1000 FT</div>
-        <div class="legend-item"><span class="color-box" style="background:#0a101a; border:1px solid #334155;"></span> БЕЗПЕЧНО (&gt; 1000 FT)</div>
+        <div class="legend-item"><span class="color-box" style="background:#268a34;"></span> БЕЗПЕЧНО (&gt; 1000 FT)</div>
       `;
     } else if (layerKey === 'garmin_topo') {
       this.legendEl.style.display = 'block';
