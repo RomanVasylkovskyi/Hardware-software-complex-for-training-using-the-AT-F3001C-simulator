@@ -308,14 +308,36 @@ class TelemetryParser:
         # ----------------- Channel 3: Speeds -----------------
         ch3_quality = self._determine_channel_quality(3, now)
         ch3 = self._raw_channels.get(3, [None] * 8)
+        ias_kt = ch3[0] if len(ch3) > 0 else None
+        if ias_kt is not None and ias_kt < 0.0:
+            ias_kt = 0.0
+        eas_kt = ch3[1] if len(ch3) > 1 else None
+        if eas_kt is not None and eas_kt < 0.0:
+            eas_kt = 0.0
+        tas_kt = ch3[2] if len(ch3) > 2 else None
+        if tas_kt is not None and tas_kt < 0.0:
+            tas_kt = 0.0
+        gs_kt = ch3[3] if len(ch3) > 3 else None
+        if gs_kt is not None and gs_kt < 0.0:
+            gs_kt = 0.0
+        ias_mph = ch3[4] if len(ch3) > 4 else None
+        if ias_mph is not None and ias_mph < 0.0:
+            ias_mph = 0.0
+        tas_mph = ch3[5] if len(ch3) > 5 else None
+        if tas_mph is not None and tas_mph < 0.0:
+            tas_mph = 0.0
+        gs_mph = ch3[6] if len(ch3) > 6 else None
+        if gs_mph is not None and gs_mph < 0.0:
+            gs_mph = 0.0
+
         speeds = Speeds(
-            indicated_airspeed_kt=ch3[0] if len(ch3) > 0 else None,
-            equivalent_airspeed_kt=ch3[1] if len(ch3) > 1 else None,
-            true_airspeed_kt=ch3[2] if len(ch3) > 2 else None,
-            groundspeed_kt=ch3[3] if len(ch3) > 3 else None,
-            indicated_airspeed_mph=ch3[4] if len(ch3) > 4 else None,
-            true_airspeed_mph=ch3[5] if len(ch3) > 5 else None,
-            groundspeed_mph=ch3[6] if len(ch3) > 6 else None,
+            indicated_airspeed_kt=ias_kt,
+            equivalent_airspeed_kt=eas_kt,
+            true_airspeed_kt=tas_kt,
+            groundspeed_kt=gs_kt,
+            indicated_airspeed_mph=ias_mph,
+            true_airspeed_mph=tas_mph,
+            groundspeed_mph=gs_mph,
             quality=ch3_quality,
             last_update=now_dt if ch3_quality == ChannelQuality.GOOD else None,
         )
@@ -598,13 +620,34 @@ class TelemetryParser:
         elif any(q == ChannelQuality.STALE for q in (ch21_quality, ch117_quality, ch118_quality, ch119_quality)):
             ap_quality = ChannelQuality.STALE
 
-        # FD commands (ch21)
-        fd_p = ch21[0] if (len(ch21) > 0 and ch21[0] is not None and abs(ch21[0]) <= 90.0) else None
-        fd_r = ch21[1] if (len(ch21) > 1 and ch21[1] is not None and abs(ch21[1]) <= 180.0) else None
+        # FD commands (ch118[7] is fd-pitch, ch118[6] is fd-roll in X-Plane 11; fallback to ch21)
+        fd_p = None
+        if len(ch118) > 7 and ch118[7] is not None and abs(ch118[7]) <= 90.0:
+            fd_p = ch118[7]
+        elif len(ch21) > 0 and ch21[0] is not None and abs(ch21[0]) <= 90.0:
+            fd_p = ch21[0]
 
-        # Autopilot reference targets (ch117)
-        tgt_alt = ch117[0] if len(ch117) > 0 else None
-        tgt_vvi = ch117[1] if len(ch117) > 1 else None
+        fd_r = None
+        if len(ch118) > 6 and ch118[6] is not None and abs(ch118[6]) <= 180.0:
+            fd_r = ch118[6]
+        elif len(ch21) > 1 and ch21[1] is not None and abs(ch21[1]) <= 180.0:
+            fd_r = ch21[1]
+
+        # Autopilot reference targets (ch118 index 3 is alt-dial on G1000, index 5 is alt-target; fallback to ch117 index 0)
+        tgt_alt = None
+        if len(ch118) > 3 and ch118[3] is not None:
+            tgt_alt = ch118[3]
+        elif len(ch118) > 5 and ch118[5] is not None:
+            tgt_alt = ch118[5]
+        elif len(ch117) > 0 and ch117[0] is not None:
+            tgt_alt = ch117[0]
+
+        tgt_vvi = None
+        if len(ch118) > 4 and ch118[4] is not None:
+            tgt_vvi = ch118[4]
+        elif len(ch117) > 1 and ch117[1] is not None:
+            tgt_vvi = ch117[1]
+
         tgt_spd = ch117[2] if len(ch117) > 2 else None
 
         # Autopilot nav & heading (ch118, ch97, ch102)

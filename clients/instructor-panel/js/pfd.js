@@ -79,9 +79,13 @@ class PrimaryFlightDisplay {
         this.roll = this.telemetry.roll_deg;
       }
       if (this.telemetry.indicated_airspeed_kt !== null && this.telemetry.indicated_airspeed_kt !== undefined) {
-        this.airspeed = this.telemetry.indicated_airspeed_kt;
+        this.airspeed = Math.max(0, this.telemetry.indicated_airspeed_kt);
       }
-      if (this.telemetry.altitude_msl_ft !== null && this.telemetry.altitude_msl_ft !== undefined) {
+      // Primary altitude tape displays Indicated Altitude based on barometric setting!
+      const altInd = this.telemetry.altitude_ind_ft ?? this.telemetry.position?.altitude_ind_ft;
+      if (altInd !== null && altInd !== undefined && !isNaN(altInd)) {
+        this.altitude = Number(altInd);
+      } else if (this.telemetry.altitude_msl_ft !== null && this.telemetry.altitude_msl_ft !== undefined) {
         this.altitude = this.telemetry.altitude_msl_ft;
       }
       const hdg = this.telemetry.heading_mag_deg ?? this.telemetry.heading_true_deg;
@@ -453,6 +457,10 @@ class PrimaryFlightDisplay {
     const cy = y + h / 2;
     const pxPerKnot = h / 70; // 70 knots visible in tape window
 
+    // Garmin G1000 authentic behavior: moving tape parks at 20 kt minimum!
+    const isTapeAlive = speed >= 20;
+    const tapeSpeed = Math.max(20, speed);
+
     // Speed bands (Cessna 172SP: Vso=40, Vs1=48, Vfe=85, Vno=129, Vne=163)
     const bands = [
       { min: 40, max: 85, color: '#ffffff', width: 6 }, // Flap range (White)
@@ -462,8 +470,8 @@ class PrimaryFlightDisplay {
     ];
 
     bands.forEach(b => {
-      const yTop = cy - (b.max - speed) * pxPerKnot;
-      const yBottom = cy - (b.min - speed) * pxPerKnot;
+      const yTop = cy - (b.max - tapeSpeed) * pxPerKnot;
+      const yBottom = cy - (b.min - tapeSpeed) * pxPerKnot;
       ctx.fillStyle = b.color;
       ctx.fillRect(x + w - 10, yTop, b.width, yBottom - yTop);
     });
@@ -475,11 +483,12 @@ class PrimaryFlightDisplay {
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
 
-    const minSpd = Math.max(0, Math.floor((speed - 40) / 10) * 10);
-    const maxSpd = Math.ceil((speed + 40) / 10) * 10;
+    const minSpd = Math.max(20, Math.floor((tapeSpeed - 40) / 10) * 10);
+    const maxSpd = Math.ceil((tapeSpeed + 40) / 10) * 10;
 
     for (let s = minSpd; s <= maxSpd; s += 5) {
-      const sy = cy - (s - speed) * pxPerKnot;
+      if (s < 20) continue;
+      const sy = cy - (s - tapeSpeed) * pxPerKnot;
       const isMajor = s % 10 === 0;
       const tickLen = isMajor ? 12 : 7;
 
@@ -498,8 +507,8 @@ class PrimaryFlightDisplay {
     const boxW = w - 6;
     const boxH = 26;
     ctx.fillStyle = '#020617';
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.6;
 
     ctx.beginPath();
     ctx.moveTo(x + 2, cy - boxH / 2);
@@ -512,11 +521,16 @@ class PrimaryFlightDisplay {
     ctx.stroke();
 
     // Airspeed readout digits
-    ctx.fillStyle = '#38bdf8';
+    ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 16px "Consolas", "Roboto", monospace';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
-    ctx.fillText(Math.round(speed).toString(), x + boxW - 12, cy);
+    if (!isTapeAlive) {
+      // Authentic G1000: dashes when below minimum measurable speed (20 kt)
+      ctx.fillText('- - -', x + boxW - 12, cy);
+    } else {
+      ctx.fillText(Math.round(speed).toString(), x + boxW - 12, cy);
+    }
 
     // Label
     ctx.fillStyle = '#94a3b8';
@@ -525,8 +539,8 @@ class PrimaryFlightDisplay {
     ctx.fillText('IAS', x + 5, y + 14);
 
     // Selected Target Airspeed Bug & Readout
-    if (targetSpeed !== null && targetSpeed !== undefined) {
-      const tgtY = cy - (targetSpeed - speed) * pxPerKnot;
+    if (targetSpeed !== null && targetSpeed !== undefined && targetSpeed > 0) {
+      const tgtY = cy - (targetSpeed - tapeSpeed) * pxPerKnot;
       if (tgtY >= y + 10 && tgtY <= y + h - 10) {
         ctx.fillStyle = '#38bdf8';
         ctx.strokeStyle = '#020617';
@@ -579,7 +593,7 @@ class PrimaryFlightDisplay {
     for (let a = minAlt; a <= maxAlt; a += 20) {
       const ay = cy - (a - altitude) * pxPerFoot;
       // Do not draw ticks into the top or bottom annunciator window areas
-      if (ay > y + h - 28 || ay < y + 25) continue;
+      if (ay > y + h - 28 || ay < y + 26) continue;
 
       const isMajor = a % 100 === 0;
       const isHalf = a % 50 === 0;
@@ -596,59 +610,76 @@ class PrimaryFlightDisplay {
       }
     }
 
-    // Selected Target Altitude Bug (Cyan/Magenta notch bug on tape)
+    // Selected Target Altitude Bug & Label (Authentic Garmin G1000 cyan bracket bug on tape)
     if (targetAltitude !== null && targetAltitude !== undefined) {
       const tgtY = cy - (targetAltitude - altitude) * pxPerFoot;
-      if (tgtY >= y + 26 && tgtY <= y + h - 22) {
-        ctx.fillStyle = '#38bdf8';
-        ctx.strokeStyle = '#020617';
+      if (tgtY >= y + 26 && tgtY <= y + h - 28) {
+        ctx.fillStyle = '#06b6d4'; // Cyan
+        ctx.strokeStyle = '#0891b2';
         ctx.lineWidth = 1.2;
+
+        // Draw G1000 style cyan bracket tab on the left edge of the tape
+        const bugW = 12;
+        const bugH = 20;
         ctx.beginPath();
-        ctx.moveTo(x + 2, tgtY);
-        ctx.lineTo(x + 11, tgtY - 6);
-        ctx.lineTo(x + 11, tgtY + 6);
+        ctx.moveTo(x + 2, tgtY - bugH / 2);
+        ctx.lineTo(x + 2 + bugW, tgtY - bugH / 2);
+        ctx.lineTo(x + 2 + bugW, tgtY - 4);
+        ctx.lineTo(x + 2 + bugW + 5, tgtY); // triangular notch pointing right at tick
+        ctx.lineTo(x + 2 + bugW, tgtY + 4);
+        ctx.lineTo(x + 2 + bugW, tgtY + bugH / 2);
+        ctx.lineTo(x + 2, tgtY + bugH / 2);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
+
+        // Numerical label right next to bug if not overlapping the center drum
+        if (Math.abs(tgtY - cy) > 22) {
+          ctx.fillStyle = '#06b6d4';
+          ctx.font = 'bold 11px "Consolas", monospace';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(Math.round(targetAltitude).toString(), x + bugW + 9, tgtY);
+        }
       }
     }
 
     // Current Altitude Readout Pointer (Center drum window)
     const boxW = w - 16;
     const boxH = 28;
-    ctx.fillStyle = '#020617';
-    ctx.strokeStyle = '#22c55e';
-    ctx.lineWidth = 2;
+    ctx.fillStyle = '#000000';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.6;
 
     ctx.beginPath();
-    ctx.moveTo(x + 10, cy);
-    ctx.lineTo(x + 18, cy - boxH / 2);
-    ctx.lineTo(x + 10 + boxW, cy - boxH / 2);
-    ctx.lineTo(x + 10 + boxW, cy + boxH / 2);
-    ctx.lineTo(x + 18, cy + boxH / 2);
+    ctx.moveTo(x + 8, cy);
+    ctx.lineTo(x + 16, cy - boxH / 2);
+    ctx.lineTo(x + 8 + boxW, cy - boxH / 2);
+    ctx.lineTo(x + 8 + boxW, cy + boxH / 2);
+    ctx.lineTo(x + 16, cy + boxH / 2);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    // Altitude digits
-    ctx.fillStyle = '#22c55e';
-    ctx.font = 'bold 15px "Consolas", "Roboto", monospace';
+    // Altitude digits (Garmin G1000 white digits on black background)
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 16px "Consolas", "Roboto", monospace';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(Math.round(altitude).toString(), x + 22, cy);
+    ctx.fillText(Math.round(altitude).toString(), x + 20, cy);
 
     // Top Selected Altitude Window (G1000 cyan readout box)
     if (targetAltitude !== null && targetAltitude !== undefined) {
       const selBoxW = w - 14;
-      const selBoxH = 19;
-      ctx.fillStyle = 'rgba(2, 6, 23, 0.9)';
-      ctx.strokeStyle = '#38bdf8';
+      const selBoxH = 20;
+      ctx.fillStyle = '#000000';
+      ctx.strokeStyle = '#06b6d4';
       ctx.lineWidth = 1.5;
       ctx.fillRect(x + 7, y + 4, selBoxW, selBoxH);
       ctx.strokeRect(x + 7, y + 4, selBoxW, selBoxH);
 
-      ctx.fillStyle = '#38bdf8';
-      ctx.font = 'bold 11px "Consolas", monospace';
+      ctx.fillStyle = '#06b6d4';
+      ctx.font = 'bold 12px "Consolas", monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(`${Math.round(targetAltitude)}`, x + 7 + selBoxW / 2, y + 4 + selBoxH / 2);
@@ -675,7 +706,7 @@ class PrimaryFlightDisplay {
     ctx.lineWidth = 1.5;
     ctx.strokeRect(baroX, baroY, baroW, baroH);
 
-    // Formatted baro setting (e.g. 28.70 IN)
+    // Formatted baro setting (e.g. 29.06 IN)
     const baroNum = (typeof baroSetting === 'number' && !isNaN(baroSetting) && baroSetting > 0) ? baroSetting : 29.92;
     const baroText = `${baroNum.toFixed(2)} IN`;
 

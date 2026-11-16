@@ -622,8 +622,9 @@ class StandbyAltimeterGauge {
     this.render();
   }
 
-  update(altitude, isOnline) {
+  update(altitude, baroSetting = 29.92, isOnline = true) {
     this.altitude = altitude;
+    this.baroSetting = (typeof baroSetting === 'number' && !isNaN(baroSetting) && baroSetting > 0) ? baroSetting : 29.92;
     this.isOnline = isOnline;
     this.render();
   }
@@ -743,7 +744,7 @@ class StandbyAltimeterGauge {
 
   drawKollsmanWindow(ctx, x, y) {
     ctx.save();
-    const kw = 42;
+    const kw = 44;
     const kh = 22;
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(x - kw / 2, y - kh / 2, kw, kh);
@@ -751,13 +752,15 @@ class StandbyAltimeterGauge {
     ctx.lineWidth = 1.5;
     ctx.strokeRect(x - kw / 2, y - kh / 2, kw, kh);
 
+    const baro = this.baroSetting || 29.92;
+    const hpa = Math.round(baro * 33.86389);
     ctx.fillStyle = '#38bdf8';
     ctx.font = 'bold 9px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('1013', x, y - 1);
-    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(`${hpa}`, x, y - 1);
+    ctx.fillStyle = '#cbd5e1';
     ctx.font = '8px monospace';
-    ctx.fillText('29.92', x, y + 8);
+    ctx.fillText(baro.toFixed(2), x, y + 8);
     ctx.restore();
   }
 
@@ -1750,16 +1753,18 @@ class StandbyInstrumentsCluster {
     }
 
     const spd = telemetry.indicated_airspeed_kt ?? telemetry.airspeed_kias ?? telemetry.speeds?.indicated_airspeed_kt;
+    const safeSpd = (spd !== null && spd !== undefined) ? Math.max(0, spd) : null;
     const pitch = telemetry.pitch_deg ?? telemetry.attitude?.pitch_deg;
     const roll = telemetry.roll_deg ?? telemetry.attitude?.roll_deg;
-    const alt = telemetry.altitude_msl_ft ?? telemetry.altitude_ft ?? telemetry.position?.altitude_msl_ft;
+    const alt = telemetry.altitude_ind_ft ?? telemetry.position?.altitude_ind_ft ?? telemetry.altitude_msl_ft ?? telemetry.altitude_ft;
+    const baro = telemetry.barometer_setting_inhg ?? telemetry.position?.barometer_setting_inhg ?? 29.92;
     const slip = telemetry.sideslip_beta_deg ?? (telemetry.g_load_side ? telemetry.g_load_side * 5.0 : 0);
     const hdg = telemetry.heading_mag_deg ?? telemetry.heading_true_deg ?? telemetry.attitude?.heading_mag_deg ?? telemetry.attitude?.heading_true_deg;
     const vsi = telemetry.vertical_speed_fpm ?? telemetry.vertical_speed ?? telemetry.speeds?.vertical_speed_fpm;
 
-    this.airspeedGauge?.update(spd, true);
+    this.airspeedGauge?.update(safeSpd, true);
     this.attitudeGauge?.update(pitch, roll, true);
-    this.altimeterGauge?.update(alt, true);
+    this.altimeterGauge?.update(alt, baro, true);
     this.turnCoordinatorGauge?.update(roll, slip, true);
     this.headingGauge?.update(hdg, true);
     this.vsiGauge?.update(vsi, true);

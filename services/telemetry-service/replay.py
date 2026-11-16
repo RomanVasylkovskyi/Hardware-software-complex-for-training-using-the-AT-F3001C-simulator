@@ -168,17 +168,18 @@ def pack_real_row_to_xplane_udp(row: Dict[str, Optional[float]]) -> bytes:
         XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
     )
 
-    # 9. Channel 20: Lat, Lon, Altitude (lat, lon, alt_msl, alt_agl, on_runway, alt_ind, ...)
+    # 9. Channel 20: Lat, Lon, Altitude (lat, lon, alt_msl, alt_agl, on_rwy, alt_ind, ...)
     lat = sanitize(row.get("latitude"))
     lon = sanitize(row.get("longitude"))
     alt_msl = sanitize(row.get("altitude_msl_ft"))
     alt_agl = sanitize(row.get("altitude_agl_ft"))
     on_rwy = sanitize(row.get("on_runway"))
+    alt_ind = sanitize(row.get("altitude_ind_ft", alt_msl))
     ch20 = struct.pack(
         "<i8f",
         20,
         lat, lon, alt_msl, alt_agl, on_rwy,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
+        alt_ind, XPLANE_NULL, XPLANE_NULL
     )
 
     # 10. Channel 25: Throttle commanded
@@ -257,14 +258,14 @@ def pack_real_row_to_xplane_udp(row: Dict[str, Optional[float]]) -> bytes:
         XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
     )
 
-    # 18. Channel 118: Autopilot Nav & Heading (hdg, nav2, crs)
+    # 18. Channel 118: Autopilot Nav & Heading (hdg, nav2, crs, alt_dial, vvi_dial, alt_target, fd_roll, fd_pitch)
     tgt_hdg = sanitize(row.get("target_heading_deg", 127.0))
     tgt_crs = sanitize(row.get("target_course_deg", 127.0))
     ch118 = struct.pack(
         "<i8f",
         118,
         tgt_hdg, XPLANE_NULL, tgt_crs,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
+        tgt_alt, tgt_vvi, tgt_alt, fd_roll, fd_pitch
     )
 
     # 19. Channel 119: Autopilot Modes (fd, ap, alt, hdg, nav, app)
