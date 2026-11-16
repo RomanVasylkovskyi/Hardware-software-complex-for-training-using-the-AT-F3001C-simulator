@@ -139,6 +139,9 @@ class Autopilot(BaseModel):
     target_vvi_fpm: Optional[float] = Field(None, description="Selected vertical speed in fpm")
     fd_pitch_deg: Optional[float] = Field(None, description="Flight Director commanded pitch in degrees")
     fd_roll_deg: Optional[float] = Field(None, description="Flight Director commanded roll in degrees")
+    nav_id: Optional[str] = Field("UKLL", description="Active waypoint or destination ident (e.g. UKLL)")
+    nav_distance_nm: Optional[float] = Field(None, description="Distance to active waypoint in NM")
+    nav_bearing_deg: Optional[float] = Field(None, description="Magnetic bearing to active waypoint in degrees")
     quality: ChannelQuality = Field(ChannelQuality.NO_SIGNAL, description="Subsystem data quality")
     last_update: Optional[datetime] = Field(None, description="UTC timestamp of last update")
 

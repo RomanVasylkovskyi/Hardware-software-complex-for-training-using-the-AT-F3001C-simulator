@@ -148,6 +148,7 @@ class TelemetryParser:
         # Replay mode tracking
         self.replay_mode = False
         self.replay_progress_pct: Optional[float] = None
+        self.airport_icao: str = "UKLL"
 
     def reset(self) -> None:
         """Reset parser state."""
@@ -601,44 +602,71 @@ class TelemetryParser:
             last_update=now_dt if ch0_quality == ChannelQuality.GOOD else None,
         )
 
-        # ----------------- Channels 21, 117, 118, 119: Autopilot -----------------
+        # ----------------- Channels 21, 97, 102, 103, 108, 117, 118, 119: Autopilot -----------------
         ch21_quality = self._determine_channel_quality(21, now)
+        ch103_quality = self._determine_channel_quality(103, now)
+        ch108_quality = self._determine_channel_quality(108, now)
         ch117_quality = self._determine_channel_quality(117, now)
         ch118_quality = self._determine_channel_quality(118, now)
         ch119_quality = self._determine_channel_quality(119, now)
 
         ch21 = self._raw_channels.get(21, [None] * 8)
+        ch97 = self._raw_channels.get(97, [None] * 8)
+        ch102 = self._raw_channels.get(102, [None] * 8)
+        ch103 = self._raw_channels.get(103, [None] * 8)
+        ch108 = self._raw_channels.get(108, [None] * 8)
         ch117 = self._raw_channels.get(117, [None] * 8)
         ch118 = self._raw_channels.get(118, [None] * 8)
         ch119 = self._raw_channels.get(119, [None] * 8)
-        ch97 = self._raw_channels.get(97, [None] * 8)
-        ch102 = self._raw_channels.get(102, [None] * 8)
 
         ap_quality = ChannelQuality.NO_SIGNAL
-        if any(q == ChannelQuality.GOOD for q in (ch21_quality, ch117_quality, ch118_quality, ch119_quality)):
+        if any(q == ChannelQuality.GOOD for q in (ch21_quality, ch108_quality, ch117_quality, ch118_quality, ch119_quality)):
             ap_quality = ChannelQuality.GOOD
-        elif any(q == ChannelQuality.STALE for q in (ch21_quality, ch117_quality, ch118_quality, ch119_quality)):
+        elif any(q == ChannelQuality.STALE for q in (ch21_quality, ch108_quality, ch117_quality, ch118_quality, ch119_quality)):
             ap_quality = ChannelQuality.STALE
 
-        # FD commands (ch118[7] is fd-pitch, ch118[6] is fd-roll in X-Plane 11; fallback to ch21)
+        # FD commands (ch108[2]/ch108[3] or ch118[7]/ch118[6] in X-Plane 11; fallback to ch21)
         fd_p = None
-        if len(ch118) > 7 and ch118[7] is not None and abs(ch118[7]) <= 90.0:
+        if len(ch108) > 2 and ch108[2] is not None and abs(ch108[2]) <= 90.0:
+            fd_p = ch108[2]
+        elif len(ch118) > 7 and ch118[7] is not None and abs(ch118[7]) <= 90.0:
             fd_p = ch118[7]
         elif len(ch21) > 0 and ch21[0] is not None and abs(ch21[0]) <= 90.0:
             fd_p = ch21[0]
 
         fd_r = None
-        if len(ch118) > 6 and ch118[6] is not None and abs(ch118[6]) <= 180.0:
+        if len(ch108) > 3 and ch108[3] is not None and abs(ch108[3]) <= 180.0:
+            fd_r = ch108[3]
+        elif len(ch118) > 6 and ch118[6] is not None and abs(ch118[6]) <= 180.0:
             fd_r = ch118[6]
         elif len(ch21) > 1 and ch21[1] is not None and abs(ch21[1]) <= 180.0:
             fd_r = ch21[1]
 
-        # Autopilot reference targets (ch118 index 3 is alt-dial on G1000, index 5 is alt-target; fallback to ch117 index 0)
+        # Autopilot master engagement & FD switch (ch108[1] is _fdir,_mode: 0=off, 1=FD, 2=AP in X-Plane; fallback to ch119)
+        ap_mode_raw = ch108[1] if (len(ch108) > 1 and ch108[1] is not None) else (ch119[1] if len(ch119) > 1 else None)
+        fd_mode_raw = ch108[1] if (len(ch108) > 1 and ch108[1] is not None) else (ch119[0] if len(ch119) > 0 else None)
+
+        ap_engaged_val = bool(ap_mode_raw is not None and ap_mode_raw >= 1.5)
+        fd_active_val = bool(fd_mode_raw is not None and fd_mode_raw >= 0.5)
+        if ap_engaged_val:
+            fd_active_val = True
+
+        # Lateral mode: ch117[1] is _mode,hding in X-Plane (1=HDG, 2=NAV); fallback to ch119[3] / ch119[4]
+        hdg_val = ch117[1] if (len(ch117) > 1 and ch117[1] is not None) else (ch119[3] if len(ch119) > 3 else None)
+        hdg_mode_val = bool(hdg_val is not None and abs(hdg_val - 1.0) < 0.1)
+        nav_mode_val = bool(hdg_val is not None and abs(hdg_val - 2.0) < 0.1) or bool(len(ch119) > 4 and ch119[4] is not None and ch119[4] >= 0.5)
+        app_mode_val = bool(len(ch119) > 5 and ch119[5] is not None and ch119[5] >= 0.5)
+
+        # Vertical mode: ch117[2] is _mode,__alt in X-Plane (6=ALT hold, 2=VVI, 1=pitch); fallback to ch119[2]
+        alt_val = ch117[2] if (len(ch117) > 2 and ch117[2] is not None) else (ch119[2] if len(ch119) > 2 else None)
+        alt_mode_val = bool(alt_val is not None and alt_val > 0.0)
+
+        # Autopilot reference targets (ch118[5] is active target altitude, index 3 is alt-dial)
         tgt_alt = None
-        if len(ch118) > 3 and ch118[3] is not None:
-            tgt_alt = ch118[3]
-        elif len(ch118) > 5 and ch118[5] is not None:
+        if len(ch118) > 5 and ch118[5] is not None and ch118[5] > 0:
             tgt_alt = ch118[5]
+        elif len(ch118) > 3 and ch118[3] is not None and ch118[3] > 0:
+            tgt_alt = ch118[3]
         elif len(ch117) > 0 and ch117[0] is not None:
             tgt_alt = ch117[0]
 
@@ -658,23 +686,10 @@ class TelemetryParser:
             )
         )
 
-        # Autopilot modes (ch119)
-        fd_val = ch119[0] if len(ch119) > 0 else None
-        ap_val = ch119[1] if len(ch119) > 1 else None
-        alt_val = ch119[2] if len(ch119) > 2 else None
-        hdg_val = ch119[3] if len(ch119) > 3 else None
-        nav_val = ch119[4] if len(ch119) > 4 else None
-        app_val = ch119[5] if len(ch119) > 5 else None
-
-        fd_active_val = bool(fd_val is not None and fd_val >= 0.5) if fd_val is not None else None
-        ap_engaged_val = bool(ap_val is not None and ap_val >= 1.5) if ap_val is not None else None
-        if ap_engaged_val:
-            fd_active_val = True
-
-        alt_mode_val = bool(alt_val is not None and alt_val >= 0.5) if alt_val is not None else None
-        hdg_mode_val = bool(hdg_val is not None and hdg_val >= 0.5) if hdg_val is not None else None
-        nav_mode_val = bool(nav_val is not None and nav_val >= 0.5) if nav_val is not None else None
-        app_mode_val = bool(app_val is not None and app_val >= 0.5) if app_val is not None else None
+        # GPS / Waypoint guidance (ch103: index 2 is distance NM, index 3 is mag bearing deg)
+        nav_dist = round(ch103[2], 1) if (len(ch103) > 2 and ch103[2] is not None and ch103[2] > 0) else None
+        nav_brg = round(ch103[3], 0) if (len(ch103) > 3 and ch103[3] is not None) else None
+        nav_ident = getattr(self, "airport_icao", "UKLL") or "UKLL"
 
         autopilot = Autopilot(
             ap_engaged=ap_engaged_val,
@@ -690,6 +705,9 @@ class TelemetryParser:
             target_vvi_fpm=tgt_vvi,
             fd_pitch_deg=fd_p,
             fd_roll_deg=fd_r,
+            nav_id=nav_ident,
+            nav_distance_nm=nav_dist,
+            nav_bearing_deg=nav_brg,
             quality=ap_quality,
             last_update=now_dt if ap_quality == ChannelQuality.GOOD else None,
         )

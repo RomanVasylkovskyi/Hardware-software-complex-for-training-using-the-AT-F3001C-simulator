@@ -112,6 +112,11 @@ class PrimaryFlightDisplay {
       this.fdPitch = this.telemetry.fd_pitch_deg ?? ap.fd_pitch_deg ?? null;
       this.fdRoll = this.telemetry.fd_roll_deg ?? ap.fd_roll_deg ?? null;
 
+      // Waypoint / GPS guidance for top navigation bar
+      this.navId = this.telemetry.nav_id ?? ap.nav_id ?? 'UKLL';
+      this.navDistance = (typeof this.telemetry.nav_distance_nm === 'number') ? this.telemetry.nav_distance_nm : (typeof ap.nav_distance_nm === 'number' ? ap.nav_distance_nm : null);
+      this.navBearing = (typeof this.telemetry.nav_bearing_deg === 'number') ? this.telemetry.nav_bearing_deg : (typeof ap.nav_bearing_deg === 'number' ? ap.nav_bearing_deg : null);
+
       // Barometric Pressure setting (inHg, e.g. 28.70, 29.92)
       const baro = this.telemetry.barometer_setting_inhg ?? (this.telemetry.position ? this.telemetry.position.barometer_setting_inhg : null);
       if (baro !== null && baro !== undefined && !isNaN(baro)) {
@@ -130,6 +135,9 @@ class PrimaryFlightDisplay {
       this.targetSpeed = null;
       this.fdPitch = null;
       this.fdRoll = null;
+      this.navId = 'UKLL';
+      this.navDistance = null;
+      this.navBearing = null;
       this.baroSetting = 29.92;
     }
   }
@@ -146,7 +154,7 @@ class PrimaryFlightDisplay {
     // Layout geometry
     const tapeWidth = Math.min(85, w * 0.18);
     const headingHeight = Math.min(65, h * 0.16);
-    const topBarHeight = 36;
+    const topBarHeight = 42;
     
     // Central ADI area
     const adiX = tapeWidth;
@@ -929,90 +937,186 @@ class PrimaryFlightDisplay {
   }
 
   /**
-   * Top Autopilot / Flight Mode Annunciator Bar (Dynamic AP / FD / HDG / ALT Status)
+   * Authentic Garmin G1000 PFD Top Bar:
+   * 1. Upper Row: Active GPS Waypoint Navigation Guidance (Direct-To ->D-, Ident, DIS, BRG)
+   * 2. Lower Row: AFCS Annunciator Bar (3 cells: Lateral Mode | AP / FD | Vertical Mode)
    */
   drawTopBar(x, y, w, h) {
     const ctx = this.ctx;
-    ctx.fillStyle = '#080d16';
+    ctx.save();
+
+    // Solid dark background
+    ctx.fillStyle = '#05080f';
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#1e293b';
+    ctx.strokeStyle = '#334155';
     ctx.lineWidth = 1;
     ctx.strokeRect(x, y, w, h);
 
+    const midY = y + Math.floor(h * 0.46);
+
+    // -------------------------------------------------------------
+    // ROW 1: Active Waypoint / GPS Navigation Guidance
+    // E.g. [ ->D- UKLL | DIS 4.7 NM | BRG 137° ]
+    // -------------------------------------------------------------
+    const row1H = midY - y;
+    const row1CenterY = y + row1H / 2;
+
+    // Optional radios on far left and right edges
+    ctx.font = 'bold 10px "Consolas", monospace';
     ctx.textBaseline = 'middle';
-    const pillY = y + 7;
-    const pillH = h - 14;
-    let curX = x + 10;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#64748b';
+    ctx.fillText('NAV1 108.95', x + 8, row1CenterY);
 
-    // Helper to draw discrete AFCS annunciator pill badges
-    const drawModePill = (label, active, activeColor = '#4ade80', subVal = null, subColor = '#38bdf8') => {
-      ctx.font = 'bold 11px "Consolas", monospace';
-      const mainW = ctx.measureText(label).width + 14;
-      const subW = (subVal && active) ? (ctx.measureText(subVal).width + 8) : 0;
-      const totalW = mainW + subW;
-
-      if (active) {
-        ctx.fillStyle = 'rgba(34, 197, 94, 0.2)';
-        ctx.strokeStyle = activeColor;
-        ctx.lineWidth = 1.2;
-      } else {
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.5)';
-        ctx.strokeStyle = 'rgba(71, 85, 105, 0.35)';
-        ctx.lineWidth = 1.0;
-      }
-
-      ctx.beginPath();
-      if (ctx.roundRect) {
-        ctx.roundRect(curX, pillY, totalW, pillH, 3);
-      } else {
-        ctx.rect(curX, pillY, totalW, pillH);
-      }
-      ctx.fill();
-      ctx.stroke();
-
-      // Main label
-      ctx.textAlign = 'left';
-      ctx.fillStyle = active ? activeColor : '#64748b';
-      ctx.fillText(label, curX + 7, pillY + pillH / 2);
-
-      // Sub value if active (e.g. 127° or 2000 FT)
-      if (active && subVal) {
-        ctx.fillStyle = subColor;
-        ctx.fillText(subVal, curX + mainW - 4, pillY + pillH / 2);
-      }
-
-      curX += totalW + 8;
-    };
-
-    // 1. AP (Autopilot Master Servo)
-    drawModePill(this.apEngaged ? '● AP' : 'AP OFF', this.apEngaged, '#4ade80');
-
-    // 2. FD (Flight Director Command Bars)
-    drawModePill(this.fdActive ? '● FD' : 'FD OFF', this.fdActive, '#f0abfc');
-
-    // 3. Lateral Mode (HDG / NAV)
-    if (this.headingMode) {
-      const hdgText = this.targetHeading !== null ? `${Math.round(this.targetHeading)}°` : '';
-      drawModePill('● HDG', true, '#4ade80', hdgText, '#38bdf8');
-    } else if (this.navMode) {
-      drawModePill('● NAV', true, '#4ade80');
-    } else {
-      drawModePill('HDG OFF', false);
-    }
-
-    // 4. Vertical Mode (ALT / VS)
-    if (this.altitudeMode) {
-      const altText = this.targetAltitude !== null ? `${Math.round(this.targetAltitude)} FT` : '';
-      drawModePill('● ALT', true, '#4ade80', altText, '#e056fd');
-    } else {
-      drawModePill('ALT OFF', false);
-    }
-
-    // Right: Airport / Runway
-    ctx.font = 'bold 11px "Consolas", monospace';
-    ctx.fillStyle = '#38bdf8';
     ctx.textAlign = 'right';
-    ctx.fillText('UKLL RWY 13', x + w - 12, y + h / 2);
+    ctx.fillStyle = '#22c55e';
+    ctx.fillText('121.800 COM1', x + w - 8, row1CenterY);
+
+    // Center Waypoint Box
+    const wpBoxW = Math.min(320, w * 0.60);
+    const wpBoxX = x + (w - wpBoxW) / 2;
+    const wpBoxY = y + 2;
+    const wpBoxH = row1H - 3;
+
+    ctx.fillStyle = '#020617';
+    ctx.fillRect(wpBoxX, wpBoxY, wpBoxW, wpBoxH);
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(wpBoxX, wpBoxY, wpBoxW, wpBoxH);
+
+    // Direct-To Icon (Magenta circle with arrow)
+    const iconX = wpBoxX + 16;
+    const iconY = row1CenterY;
+    ctx.strokeStyle = '#d946ef';
+    ctx.fillStyle = '#d946ef';
+    ctx.lineWidth = 1.6;
+
+    // Circle
+    ctx.beginPath();
+    ctx.arc(iconX, iconY, 4.5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Arrow line and head
+    ctx.beginPath();
+    ctx.moveTo(iconX - 7, iconY);
+    ctx.lineTo(iconX + 8, iconY);
+    ctx.lineTo(iconX + 4, iconY - 3.5);
+    ctx.moveTo(iconX + 8, iconY);
+    ctx.lineTo(iconX + 4, iconY + 3.5);
+    ctx.stroke();
+
+    // Waypoint Ident (e.g. UKLL)
+    const ident = this.navId || 'UKLL';
+    ctx.font = 'bold 12px "Consolas", monospace';
+    ctx.fillStyle = '#e879f9'; // Vibrant magenta
+    ctx.textAlign = 'left';
+    ctx.fillText(ident, iconX + 14, iconY);
+
+    // Divider 1
+    const div1X = wpBoxX + wpBoxW * 0.38;
+    ctx.strokeStyle = '#334155';
+    ctx.beginPath();
+    ctx.moveTo(div1X, wpBoxY + 2);
+    ctx.lineTo(div1X, wpBoxY + wpBoxH - 2);
+    ctx.stroke();
+
+    // DIS (Distance)
+    const distVal = (this.navDistance !== null && this.navDistance !== undefined) ? this.navDistance.toFixed(1) : '4.7';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('DIS', div1X + 8, iconY);
+
+    ctx.font = 'bold 12px "Consolas", monospace';
+    ctx.fillStyle = '#e879f9';
+    ctx.fillText(distVal, div1X + 32, iconY);
+
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('NM', div1X + 32 + ctx.measureText(distVal).width + 3, iconY);
+
+    // Divider 2
+    const div2X = wpBoxX + wpBoxW * 0.70;
+    ctx.strokeStyle = '#334155';
+    ctx.beginPath();
+    ctx.moveTo(div2X, wpBoxY + 2);
+    ctx.lineTo(div2X, wpBoxY + wpBoxH - 2);
+    ctx.stroke();
+
+    // BRG (Bearing)
+    const brgVal = (this.navBearing !== null && this.navBearing !== undefined) ? `${Math.round(this.navBearing)}°` : '137°';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('BRG', div2X + 8, iconY);
+
+    ctx.font = 'bold 12px "Consolas", monospace';
+    ctx.fillStyle = '#e879f9';
+    ctx.fillText(brgVal, div2X + 36, iconY);
+
+    // -------------------------------------------------------------
+    // ROW 2: AFCS Annunciator Bar (Garmin G1000 3-cell segmented window)
+    // E.g. [   HDG   |   AP   |   ALT 1000 FT   ]
+    // -------------------------------------------------------------
+    const row2Y = midY;
+    const row2H = y + h - row2Y;
+    const row2CenterY = row2Y + row2H / 2;
+
+    const afcsW = Math.min(360, w * 0.75);
+    const afcsX = x + (w - afcsW) / 2;
+    const cellW = afcsW / 3;
+
+    // AFCS outer frame
+    ctx.fillStyle = '#020617';
+    ctx.fillRect(afcsX, row2Y, afcsW, row2H);
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(afcsX, row2Y, afcsW, row2H);
+
+    // Cell vertical dividers
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(afcsX + cellW, row2Y);
+    ctx.lineTo(afcsX + cellW, row2Y + row2H);
+    ctx.moveTo(afcsX + cellW * 2, row2Y);
+    ctx.lineTo(afcsX + cellW * 2, row2Y + row2H);
+    ctx.stroke();
+
+    // CELL 1: Lateral Mode
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 13px "Consolas", monospace';
+    if (this.headingMode) {
+      ctx.fillStyle = '#22c55e'; // Garmin Active Mode Green
+      ctx.fillText('HDG', afcsX + cellW / 2, row2CenterY);
+    } else if (this.navMode) {
+      ctx.fillStyle = '#22c55e';
+      ctx.fillText('NAV', afcsX + cellW / 2, row2CenterY);
+    } else if (this.approachMode) {
+      ctx.fillStyle = '#22c55e';
+      ctx.fillText('APPR', afcsX + cellW / 2, row2CenterY);
+    }
+
+    // CELL 2: Autopilot Master (AP / FD)
+    if (this.apEngaged) {
+      ctx.fillStyle = '#22c55e'; // Garmin Active Green
+      ctx.fillText('AP', afcsX + cellW + cellW / 2, row2CenterY);
+    } else if (this.fdActive) {
+      ctx.fillStyle = '#22c55e';
+      ctx.fillText('FD', afcsX + cellW + cellW / 2, row2CenterY);
+    }
+
+    // CELL 3: Vertical Mode
+    if (this.altitudeMode) {
+      const altNum = (this.targetAltitude !== null && this.targetAltitude !== undefined) ? Math.round(this.targetAltitude) : 1000;
+      ctx.fillStyle = '#22c55e';
+      ctx.fillText(`ALT ${altNum} FT`, afcsX + cellW * 2 + cellW / 2, row2CenterY);
+    } else if (this.telemetry && this.telemetry.target_vvi_fpm) {
+      const vvi = Math.round(this.telemetry.target_vvi_fpm);
+      ctx.fillStyle = '#22c55e';
+      ctx.fillText(`VS ${vvi > 0 ? '+' : ''}${vvi}`, afcsX + cellW * 2 + cellW / 2, row2CenterY);
+    }
+
+    ctx.restore();
   }
 
   /**

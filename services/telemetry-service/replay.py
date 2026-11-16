@@ -247,14 +247,16 @@ def pack_real_row_to_xplane_udp(row: Dict[str, Optional[float]]) -> bytes:
         XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
     )
 
-    # 17. Channel 117: Autopilot Reference (alt, vvi, spd)
-    tgt_alt = sanitize(row.get("target_altitude_ft", 2000.0))
+    # 17. Channel 117: Autopilot Reference & Modes (spd, hdg_mode, alt_mode)
+    tgt_alt = sanitize(row.get("target_altitude_ft", 1000.0))
     tgt_vvi = sanitize(row.get("target_vvi_fpm", 0.0))
     tgt_spd = sanitize(row.get("target_speed_kt", 110.0))
+    hdg_mode_flag = 1.0 if sanitize(row.get("hdg_mode", 1.0)) >= 0.5 else 0.0
+    alt_mode_flag = 6.0 if sanitize(row.get("alt_mode", 1.0)) >= 0.5 else 0.0
     ch117 = struct.pack(
         "<i8f",
         117,
-        tgt_alt, tgt_vvi, tgt_spd,
+        tgt_spd, hdg_mode_flag, alt_mode_flag,
         XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
     )
 
@@ -282,7 +284,26 @@ def pack_real_row_to_xplane_udp(row: Dict[str, Optional[float]]) -> bytes:
         XPLANE_NULL, XPLANE_NULL
     )
 
-    # 20. Channel 7: System Pressures / Altimeter Barometer Setting (baro-pilot inHg)
+    # 20. Channel 108: Autopilot Flight Director master mode & commands
+    ap_fdir_mode = 2.0 if ap_m >= 1.5 else (1.0 if fd_m >= 0.5 else 0.0)
+    ch108 = struct.pack(
+        "<i8f",
+        108,
+        XPLANE_NULL, ap_fdir_mode, fd_pitch, fd_roll,
+        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
+    )
+
+    # 21. Channel 103: GPS Navigation Waypoint guidance
+    nav_dist = sanitize(row.get("nav_distance_nm", 4.7))
+    nav_brg = sanitize(row.get("nav_bearing_deg", 137.0))
+    ch103 = struct.pack(
+        "<i8f",
+        103,
+        XPLANE_NULL, XPLANE_NULL, nav_dist, nav_brg,
+        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
+    )
+
+    # 22. Channel 7: System Pressures / Altimeter Barometer Setting (baro-pilot inHg)
     baro_val = sanitize(row.get("barometer_setting_inhg", 28.70))
     ch7 = struct.pack(
         "<i8f",
@@ -309,6 +330,8 @@ def pack_real_row_to_xplane_udp(row: Dict[str, Optional[float]]) -> bytes:
         + ch47
         + ch62
         + ch21
+        + ch103
+        + ch108
         + ch117
         + ch118
         + ch119

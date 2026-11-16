@@ -171,8 +171,8 @@ def test_real_flight_data_loading_and_packing():
     # Pack to real X-Plane UDP packet
     udp_packet = pack_real_row_to_xplane_udp(first_row)
     assert udp_packet.startswith(XPLANE_DATA_HEADER)
-    # Verify packet length: 5 header + 20 channels * 36 bytes = 725 bytes
-    assert len(udp_packet) == 5 + 20 * 36
+    # Verify packet length: 5 header + 22 channels * 36 bytes = 797 bytes
+    assert len(udp_packet) == 5 + 22 * 36
 
     # Ingest into parser
     parser = TelemetryParser()
