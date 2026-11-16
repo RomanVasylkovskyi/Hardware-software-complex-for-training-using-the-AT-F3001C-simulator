@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css?v=3" />
   
   <!-- Custom Avionics CSS -->
-  <link rel="stylesheet" href="css/main.css?v=33" />
+  <link rel="stylesheet" href="css/main.css?v=34" />
 </head>
 <body>
   <!-- HEADER / SYSTEM STATUS BAR -->
@@ -30,6 +30,14 @@
         <span class="hdr-source-label">ДЖЕРЕЛО:</span>
         <span id="hdr-source-indicator" class="source-mode-tag nodata">nodata</span>
       </div>
+
+      <!-- Warning & Error Audio Alert Mute/Unmute Control -->
+      <button id="btn-audio-mute" class="hdr-audio-btn" title="Звукові сповіщення увімкнено (натисніть щоб вимкнути)">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+        </svg>
+        <span>AUDIO: ON</span>
+      </button>
     </div>
 
     <!-- Central Unified Section Tabs (Aeronautical Softkeys, Strict Engineering Style) -->
@@ -151,9 +159,6 @@
             <path d="M12 3L2 12h3v8h14v-8h3L12 3zm1 15h-2v-4h2v4zm0-6h-2V8h2v4z"/>
           </svg>
           <span>СИЛОВА УСТАНОВКА (EIS)</span>
-        </div>
-        <div class="panel-controls">
-          <button id="btn-audio-mute" class="btn-ctrl" title="Увімкнути / вимкнути звукові сповіщення">AUDIO: ON</button>
         </div>
       </div>
       <div class="panel-body">
@@ -471,7 +476,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js?v=3"></script>
 
   <!-- Avionics Modular Scripts -->
-  <script src="js/audio.js?v=29"></script>
+  <script src="js/audio.js?v=34"></script>
   <script src="js/pfd.js?v=29"></script>
   <script src="js/nd.js?v=29"></script>
   <script src="js/standby_gauges.js?v=29"></script>
