@@ -113,38 +113,7 @@ class InstructorPanelApp {
       });
     });
 
-    // Tab Switcher between Engine (EIS) and Standby Instruments
-    const btnTabEis = document.getElementById('tab-btn-eis');
-    const btnTabStandby = document.getElementById('tab-btn-standby');
-    const viewEis = document.getElementById('view-eis');
-    const viewStandby = document.getElementById('view-standby');
-    const popoutEis = document.getElementById('popout-eis');
-    const popoutStandby = document.getElementById('popout-standby');
 
-    if (btnTabEis && btnTabStandby && viewEis && viewStandby) {
-      btnTabEis.addEventListener('click', () => {
-        btnTabEis.classList.add('active');
-        btnTabStandby.classList.remove('active');
-        viewEis.classList.remove('hidden');
-        viewStandby.classList.add('hidden');
-        if (popoutEis) popoutEis.classList.remove('hidden');
-        if (popoutStandby) popoutStandby.classList.add('hidden');
-      });
-
-      btnTabStandby.addEventListener('click', () => {
-        btnTabStandby.classList.add('active');
-        btnTabEis.classList.remove('active');
-        viewStandby.classList.remove('hidden');
-        viewEis.classList.add('hidden');
-        if (popoutStandby) popoutStandby.classList.remove('hidden');
-        if (popoutEis) popoutEis.classList.add('hidden');
-        if (this.standby) {
-          setTimeout(() => {
-            this.standby.resize();
-          }, 30);
-        }
-      });
-    }
 
     // Global SPA Navigation Tabs & Section Switchers
     document.querySelectorAll('.nav-tab-btn, .btn-switch-view').forEach(btn => {
@@ -232,23 +201,7 @@ class InstructorPanelApp {
       this.settingsManager.onViewActivated();
     }
 
-    // 3. For engine / standby sub-views inside card-engine
-    const viewEis = document.getElementById('view-eis');
-    const viewStandby = document.getElementById('view-standby');
-    const tabBtnEis = document.getElementById('tab-btn-eis');
-    const tabBtnStandby = document.getElementById('tab-btn-standby');
 
-    if (viewName === 'standby') {
-      if (viewEis) viewEis.classList.add('hidden');
-      if (viewStandby) viewStandby.classList.remove('hidden');
-      if (tabBtnEis) tabBtnEis.classList.remove('active');
-      if (tabBtnStandby) tabBtnStandby.classList.add('active');
-    } else if (viewName === 'engine') {
-      if (viewEis) viewEis.classList.remove('hidden');
-      if (viewStandby) viewStandby.classList.add('hidden');
-      if (tabBtnEis) tabBtnEis.classList.add('active');
-      if (tabBtnStandby) tabBtnStandby.classList.remove('active');
-    }
 
     // 4. Force resize on active canvas or Leaflet map so it fills available screen immediately
     this.handleResize();
@@ -425,16 +378,8 @@ class InstructorPanelApp {
     if (active === 'all') {
       this.pfd.update(payload.telemetry, isTelemetryOnline);
       this.nd.update(payload.telemetry, isTelemetryOnline);
-
-      const viewStandby = document.getElementById('view-standby');
-      const isStandbyActive = viewStandby && !viewStandby.classList.contains('hidden');
-      if (isStandbyActive) {
-        if (this.standby) this.standby.update(payload.telemetry, isTelemetryOnline);
-      } else {
-        this.engine.update(payload.telemetry, isTelemetryOnline);
-      }
-
-      this.updateVisionHUD(payload.vision, isVisionOnline);
+      if (this.standby) this.standby.update(payload.telemetry, isTelemetryOnline);
+      this.engine.update(payload.telemetry, isTelemetryOnline);
     } else if (active === 'pfd') {
       this.pfd.update(payload.telemetry, isTelemetryOnline);
     } else if (active === 'nd') {

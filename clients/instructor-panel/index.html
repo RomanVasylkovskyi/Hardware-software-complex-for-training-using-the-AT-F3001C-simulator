@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css?v=3" />
   
   <!-- Custom Avionics CSS -->
-  <link rel="stylesheet" href="css/main.css?v=32" />
+  <link rel="stylesheet" href="css/main.css?v=33" />
 </head>
 <body>
   <!-- HEADER / SYSTEM STATUS BAR -->
@@ -90,20 +90,73 @@
       </div>
     </div>
 
-    <!-- PANEL 3: EIS (ENGINE INDICATION SYSTEM) & STANDBY INSTRUMENTS (DUAL-MODE) -->
-    <div class="panel-card" id="card-engine">
+    <!-- PANEL 3: STANDBY ANALOG GAUGES CLUSTER (BASIC SIX / SIX-PACK) -->
+    <div class="panel-card" id="card-standby">
       <div class="panel-header">
         <div class="panel-title" style="display:flex; align-items:center; gap:8px;">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 3L2 12h3v8h14v-8h3L12 3zm1 15h-2v-4h2v4zm0-6h-2V8h2v4z"/></svg>
-          <span>СИЛОВА УСТАНОВКА &bull; ДУБЛЮЮЧІ ПРИЛАДИ</span>
-        </div>
-        <div class="panel-controls">
-          <button id="tab-btn-eis" class="btn-ctrl active" title="Показати цифрові параметри двигуна EIS">ДВИГУН (EIS)</button>
-          <button id="tab-btn-standby" class="btn-ctrl" title="Показати 6 дублюючих аналогових приладів (Basic Six)">ДУБЛЮЮЧІ ПРИЛАДИ (6)</button>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+          </svg>
+          <span>ДУБЛЮЮЧІ ПРИЛАДИ (STANDBY)</span>
         </div>
       </div>
       <div class="panel-body">
-        <!-- MODE A: EIS ENGINE GRID -->
+        <div class="standby-cluster-container" id="view-standby">
+          <!-- ROW 1 (TOP) -->
+          <!-- 1. Airspeed Indicator -->
+          <div class="standby-gauge-box">
+            <canvas id="gauge-airspeed-dash"></canvas>
+            <div class="standby-gauge-label">AIRSPEED (KT)</div>
+          </div>
+
+          <!-- 2. Gyro Horizon / Attitude Indicator -->
+          <div class="standby-gauge-box">
+            <canvas id="gauge-attitude-dash"></canvas>
+            <div class="standby-gauge-label">GYRO HORIZON</div>
+          </div>
+
+          <!-- 3. Altimeter -->
+          <div class="standby-gauge-box">
+            <canvas id="gauge-altimeter-dash"></canvas>
+            <div class="standby-gauge-label">ALTIMETER (FT)</div>
+          </div>
+
+          <!-- ROW 2 (BOTTOM) -->
+          <!-- 4. Turn Coordinator -->
+          <div class="standby-gauge-box">
+            <canvas id="gauge-turn-dash"></canvas>
+            <div class="standby-gauge-label">TURN COORDINATOR</div>
+          </div>
+
+          <!-- 5. Heading Indicator (Directional Gyro) -->
+          <div class="standby-gauge-box">
+            <canvas id="gauge-heading-dash"></canvas>
+            <div class="standby-gauge-label">HEADING (GYRO)</div>
+          </div>
+
+          <!-- 6. Vertical Speed Indicator (VSI) -->
+          <div class="standby-gauge-box">
+            <canvas id="gauge-vsi-dash"></canvas>
+            <div class="standby-gauge-label">VERTICAL SPEED</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANEL 4: ENGINE INDICATION SYSTEM (EIS) -->
+    <div class="panel-card" id="card-engine">
+      <div class="panel-header">
+        <div class="panel-title" style="display:flex; align-items:center; gap:8px;">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M12 3L2 12h3v8h14v-8h3L12 3zm1 15h-2v-4h2v4zm0-6h-2V8h2v4z"/>
+          </svg>
+          <span>СИЛОВА УСТАНОВКА (EIS)</span>
+        </div>
+        <div class="panel-controls">
+          <button id="btn-audio-mute" class="btn-ctrl" title="Увімкнути / вимкнути звукові сповіщення">AUDIO: ON</button>
+        </div>
+      </div>
+      <div class="panel-body">
         <div class="engine-grid" id="view-eis">
           <!-- RPM -->
           <div class="gauge-card">
@@ -211,107 +264,6 @@
               <div class="gauge-bar-fill" id="ctrl-elevator-bar"></div>
             </div>
             <div class="no-data-badge" id="ctrl-elevator-badge">nodata</div>
-          </div>
-        </div>
-
-        <!-- MODE B: 6 STANDBY ANALOG GAUGES CLUSTER (BASIC SIX / SIX-PACK) -->
-        <div class="standby-cluster-container hidden" id="view-standby">
-          <!-- ROW 1 (TOP) -->
-          <!-- 1. Airspeed Indicator -->
-          <div class="standby-gauge-box">
-            <canvas id="gauge-airspeed-dash"></canvas>
-            <div class="standby-gauge-label">AIRSPEED (KT)</div>
-          </div>
-
-          <!-- 2. Gyro Horizon / Attitude Indicator -->
-          <div class="standby-gauge-box">
-            <canvas id="gauge-attitude-dash"></canvas>
-            <div class="standby-gauge-label">GYRO HORIZON</div>
-          </div>
-
-          <!-- 3. Altimeter -->
-          <div class="standby-gauge-box">
-            <canvas id="gauge-altimeter-dash"></canvas>
-            <div class="standby-gauge-label">ALTIMETER (FT)</div>
-          </div>
-
-          <!-- ROW 2 (BOTTOM) -->
-          <!-- 4. Turn Coordinator -->
-          <div class="standby-gauge-box">
-            <canvas id="gauge-turn-dash"></canvas>
-            <div class="standby-gauge-label">TURN COORDINATOR</div>
-          </div>
-
-          <!-- 5. Heading Indicator (Directional Gyro) -->
-          <div class="standby-gauge-box">
-            <canvas id="gauge-heading-dash"></canvas>
-            <div class="standby-gauge-label">HEADING (GYRO)</div>
-          </div>
-
-          <!-- 6. Vertical Speed Indicator (VSI) -->
-          <div class="standby-gauge-box">
-            <canvas id="gauge-vsi-dash"></canvas>
-            <div class="standby-gauge-label">VERTICAL SPEED</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- PANEL 4: FLIGHT ANALYSIS, STABILIZED APPROACH & VISION HUD -->
-    <div class="panel-card" id="card-analysis">
-      <div class="panel-header">
-        <div class="panel-title">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
-          Flight Safety, Stabilized Approach &amp; Vision
-        </div>
-        <div class="panel-controls">
-          <button id="btn-audio-mute" class="btn-ctrl">AUDIO: ON</button>
-        </div>
-      </div>
-      <div class="panel-body">
-        <div class="analysis-container">
-          <!-- Stabilized Approach & ILS Deviation -->
-          <div class="analysis-subpanel">
-            <div class="subpanel-title">Stabilized Approach Criteria (ICAO)</div>
-            <div id="approach-status-badge" class="status-pill status-offline">APPROACH: nodata</div>
-            
-            <div class="ils-section">
-              <div class="ils-row">
-                <span>GLIDESLOPE DEV (GS):</span>
-                <div id="ils-gs-dots" class="ils-dots-container">
-                  <div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div>
-                </div>
-              </div>
-              <div class="ils-row">
-                <span>LOCALIZER DEV (LOC):</span>
-                <div id="ils-loc-dots" class="ils-dots-container">
-                  <div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div>
-                </div>
-              </div>
-            </div>
-
-            <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 4px; line-height: 1.4;">
-              Criteria: &plusmn;1 Dot GS/LOC &bull; Speed Vref+10/-5 &bull; Sink &le;1000 FPM &bull; Flaps Configured
-            </div>
-          </div>
-
-          <!-- Vision & Ergonomics HUD -->
-          <div class="analysis-subpanel">
-            <div class="subpanel-title">Pilot Vision &amp; Posture Tracking</div>
-            <div class="hud-grid">
-              <div class="hud-item">
-                <div class="hud-lbl">PILOT PRESENCE:</div>
-                <div class="hud-val text-muted" id="hud-pilot-detected">nodata</div>
-              </div>
-              <div class="hud-item">
-                <div class="hud-lbl">GAZE VECTOR:</div>
-                <div class="hud-val text-muted" id="hud-gaze-direction">nodata</div>
-              </div>
-              <div class="hud-item" style="grid-column: span 2;">
-                <div class="hud-lbl">ERGONOMICS / POSTURE:</div>
-                <div class="hud-val text-muted" id="hud-posture-alert">nodata</div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -526,6 +478,6 @@
   <script src="js/engine.js?v=29"></script>
   <script src="js/alerts.js?v=29"></script>
   <script src="js/settings.js?v=32"></script>
-  <script src="js/app.js?v=32"></script>
+  <script src="js/app.js?v=33"></script>
 </body>
 </html>

@@ -1094,11 +1094,48 @@ body.mode-all main.dashboard-grid {
   background-color: var(--bg-card-border) !important;
 }
 
+body.mode-all #card-pfd,
+body.mode-all #card-nd,
+body.mode-all #card-standby,
+body.mode-all #card-engine {
+  display: flex !important;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+#card-standby .panel-body,
+#card-engine .panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#card-standby #view-standby {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  grid-template-rows: repeat(2, 1fr) !important;
+  width: 100%;
+  height: 100%;
+  overflow: hidden !important;
+  box-sizing: border-box;
+}
+
+#card-engine #view-eis {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  grid-template-rows: repeat(3, 1fr) !important;
+  width: 100%;
+  height: 100%;
+  overflow: hidden !important;
+  box-sizing: border-box;
+}
+
 body.mode-pfd main.dashboard-grid,
 body.mode-nd main.dashboard-grid,
 body.mode-standby main.dashboard-grid,
 body.mode-engine main.dashboard-grid,
-body.mode-safety main.dashboard-grid,
 body.mode-settings main.dashboard-grid {
   grid-template-columns: 1fr !important;
   grid-template-rows: 1fr !important;
@@ -1108,38 +1145,42 @@ body.mode-settings main.dashboard-grid {
 
 /* Hide other panels when in single-panel mode */
 body.mode-pfd #card-nd,
+body.mode-pfd #card-standby,
 body.mode-pfd #card-engine,
 body.mode-pfd #card-analysis {
   display: none !important;
 }
 body.mode-pfd #card-pfd {
+  display: flex !important;
+  flex-direction: column;
   height: 100%;
 }
 
 body.mode-nd #card-pfd,
+body.mode-nd #card-standby,
 body.mode-nd #card-engine,
 body.mode-nd #card-analysis {
   display: none !important;
 }
 body.mode-nd #card-nd {
+  display: flex !important;
+  flex-direction: column;
   height: 100%;
 }
 
 body.mode-standby #card-pfd,
 body.mode-standby #card-nd,
+body.mode-standby #card-engine,
 body.mode-standby #card-analysis {
   display: none !important;
 }
-body.mode-standby #card-engine {
+body.mode-standby #card-standby {
   display: flex !important;
   flex-direction: column;
   height: 100%;
 }
 /* Delete / hide entire secondary header row on Standby tab */
-body.mode-standby #card-engine .panel-header {
-  display: none !important;
-}
-body.mode-standby #view-eis {
+body.mode-standby #card-standby .panel-header {
   display: none !important;
 }
 body.mode-standby #view-standby {
@@ -1173,6 +1214,7 @@ body.mode-standby .standby-gauge-label {
 
 body.mode-engine #card-pfd,
 body.mode-engine #card-nd,
+body.mode-engine #card-standby,
 body.mode-engine #card-analysis {
   display: none !important;
 }
@@ -1180,9 +1222,6 @@ body.mode-engine #card-engine {
   display: flex !important;
   flex-direction: column;
   height: 100%;
-}
-body.mode-engine #view-standby {
-  display: none !important;
 }
 body.mode-engine #view-eis {
   display: grid !important;
@@ -1192,25 +1231,9 @@ body.mode-engine #view-eis {
   gap: 12px;
 }
 
-body.mode-safety #card-pfd,
-body.mode-safety #card-nd,
-body.mode-safety #card-engine {
-  display: none !important;
-}
-body.mode-safety #card-analysis {
-  display: flex !important;
-  flex-direction: column;
-  height: 100%;
-}
-body.mode-safety .analysis-container {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  height: 100%;
-  gap: 16px;
-}
-
 body.mode-settings #card-pfd,
 body.mode-settings #card-nd,
+body.mode-settings #card-standby,
 body.mode-settings #card-engine,
 body.mode-settings #card-analysis {
   display: none !important;
@@ -1521,8 +1544,8 @@ body.mode-settings #card-settings {
     min-height: 350px !important;
   }
 
-  body.mode-all #card-engine,
-  body.mode-all #card-analysis {
+  body.mode-all #card-standby,
+  body.mode-all #card-engine {
     height: auto !important;
     min-height: 350px !important;
   }
@@ -1664,14 +1687,10 @@ body.mode-settings #card-settings {
     min-height: 300px !important;
   }
 
+  body.mode-all #card-standby,
   body.mode-all #card-engine {
     height: auto !important;
     min-height: 280px !important;
-  }
-
-  body.mode-all #card-analysis {
-    height: auto !important;
-    min-height: 260px !important;
   }
 
   /* Single Fullscreen View Modes on Mobile */
@@ -1928,7 +1947,7 @@ body.mode-settings #card-settings {
     background-color: var(--bg-card-border) !important;
   }
 
-  #card-pfd, #card-nd, #card-engine, #card-analysis {
+  #card-pfd, #card-nd, #card-standby, #card-engine {
     height: 100% !important;
     min-height: 0 !important;
   }
