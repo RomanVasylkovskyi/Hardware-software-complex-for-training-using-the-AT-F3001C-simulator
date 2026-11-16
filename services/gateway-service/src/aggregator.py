@@ -97,6 +97,12 @@ def normalize_telemetry(raw: Any) -> Optional[Dict[str, Any]]:
         if "total_time_sec" in raw["flight_times"] and "time_sec" not in flat:
             flat["time_sec"] = raw["flight_times"]["total_time_sec"]
 
+    # 8. Autopilot & Flight Director
+    if "autopilot" in raw and isinstance(raw["autopilot"], dict):
+        for k, v in raw["autopilot"].items():
+            if k not in flat or flat[k] is None:
+                flat[k] = v
+
     return flat
 
 

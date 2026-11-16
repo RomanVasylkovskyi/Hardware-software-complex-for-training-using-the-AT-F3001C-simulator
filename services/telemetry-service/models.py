@@ -122,6 +122,25 @@ class FlightTimes(BaseModel):
     last_update: Optional[datetime] = Field(None, description="UTC timestamp of last update")
 
 
+class Autopilot(BaseModel):
+    """Autopilot status, modes, and command references (X-Plane Channels 21, 117, 118, 119)."""
+    ap_engaged: Optional[bool] = Field(None, description="Autopilot master servo engaged (AP)")
+    fd_active: Optional[bool] = Field(None, description="Flight Director active (FD)")
+    heading_mode: Optional[bool] = Field(None, description="Heading select mode active (HDG)")
+    altitude_mode: Optional[bool] = Field(None, description="Altitude hold mode active (ALT)")
+    nav_mode: Optional[bool] = Field(None, description="Navigation tracking mode active (NAV/GPS)")
+    approach_mode: Optional[bool] = Field(None, description="Approach mode active (APR/GS)")
+    target_altitude_ft: Optional[float] = Field(None, description="Selected altitude dial in feet")
+    target_heading_deg: Optional[float] = Field(None, description="Selected heading bug in degrees (0-360)")
+    target_course_deg: Optional[float] = Field(None, description="Selected course / CDI in degrees (0-360)")
+    target_speed_kt: Optional[float] = Field(None, description="Selected airspeed in knots")
+    target_vvi_fpm: Optional[float] = Field(None, description="Selected vertical speed in fpm")
+    fd_pitch_deg: Optional[float] = Field(None, description="Flight Director commanded pitch in degrees")
+    fd_roll_deg: Optional[float] = Field(None, description="Flight Director commanded roll in degrees")
+    quality: ChannelQuality = Field(ChannelQuality.NO_SIGNAL, description="Subsystem data quality")
+    last_update: Optional[datetime] = Field(None, description="UTC timestamp of last update")
+
+
 class SimulatorStatus(BaseModel):
     """Network connection, packet statistics, and simulator health metadata."""
     connection: ConnectionStatus = Field(ConnectionStatus.OFFLINE, description="Simulator connection state")
@@ -149,6 +168,7 @@ class TelemetrySnapshot(BaseModel):
     controls: Controls = Field(default_factory=Controls, description="Flight controls and surfaces")
     engine: Engine = Field(default_factory=Engine, description="Powerplant indicators")
     flight_times: FlightTimes = Field(default_factory=FlightTimes, description="Clocks and frame rates")
+    autopilot: Autopilot = Field(default_factory=Autopilot, description="Autopilot and Flight Director status")
     raw_channels: Dict[int, List[Optional[float]]] = Field(
         default_factory=dict,
         description="Preserved raw unpacked channel values (with -999.0 resolved to null)"

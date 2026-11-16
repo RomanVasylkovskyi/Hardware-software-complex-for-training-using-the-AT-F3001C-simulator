@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Tuple
 try:
     from .models import (
         Attitude,
+        Autopilot,
         ChannelQuality,
         ConnectionStatus,
         Controls,
@@ -37,6 +38,7 @@ try:
 except ImportError:
     from models import (
         Attitude,
+        Autopilot,
         ChannelQuality,
         ConnectionStatus,
         Controls,
@@ -559,6 +561,78 @@ class TelemetryParser:
             last_update=now_dt if ch0_quality == ChannelQuality.GOOD else None,
         )
 
+        # ----------------- Channels 21, 117, 118, 119: Autopilot -----------------
+        ch21_quality = self._determine_channel_quality(21, now)
+        ch117_quality = self._determine_channel_quality(117, now)
+        ch118_quality = self._determine_channel_quality(118, now)
+        ch119_quality = self._determine_channel_quality(119, now)
+
+        ch21 = self._raw_channels.get(21, [None] * 8)
+        ch117 = self._raw_channels.get(117, [None] * 8)
+        ch118 = self._raw_channels.get(118, [None] * 8)
+        ch119 = self._raw_channels.get(119, [None] * 8)
+        ch97 = self._raw_channels.get(97, [None] * 8)
+        ch102 = self._raw_channels.get(102, [None] * 8)
+
+        ap_quality = ChannelQuality.NO_SIGNAL
+        if any(q == ChannelQuality.GOOD for q in (ch21_quality, ch117_quality, ch118_quality, ch119_quality)):
+            ap_quality = ChannelQuality.GOOD
+        elif any(q == ChannelQuality.STALE for q in (ch21_quality, ch117_quality, ch118_quality, ch119_quality)):
+            ap_quality = ChannelQuality.STALE
+
+        # FD commands (ch21)
+        fd_p = ch21[0] if (len(ch21) > 0 and ch21[0] is not None and abs(ch21[0]) <= 90.0) else None
+        fd_r = ch21[1] if (len(ch21) > 1 and ch21[1] is not None and abs(ch21[1]) <= 180.0) else None
+
+        # Autopilot reference targets (ch117)
+        tgt_alt = ch117[0] if len(ch117) > 0 else None
+        tgt_vvi = ch117[1] if len(ch117) > 1 else None
+        tgt_spd = ch117[2] if len(ch117) > 2 else None
+
+        # Autopilot nav & heading (ch118, ch97, ch102)
+        tgt_hdg = ch118[0] if len(ch118) > 0 else None
+        tgt_crs = ch118[2] if len(ch118) > 2 and ch118[2] is not None else (
+            ch102[2] if len(ch102) > 2 and ch102[2] is not None else (
+                ch97[2] if len(ch97) > 2 else None
+            )
+        )
+
+        # Autopilot modes (ch119)
+        fd_val = ch119[0] if len(ch119) > 0 else None
+        ap_val = ch119[1] if len(ch119) > 1 else None
+        alt_val = ch119[2] if len(ch119) > 2 else None
+        hdg_val = ch119[3] if len(ch119) > 3 else None
+        nav_val = ch119[4] if len(ch119) > 4 else None
+        app_val = ch119[5] if len(ch119) > 5 else None
+
+        fd_active_val = bool(fd_val is not None and fd_val >= 0.5) if fd_val is not None else None
+        ap_engaged_val = bool(ap_val is not None and ap_val >= 1.5) if ap_val is not None else None
+        if ap_engaged_val:
+            fd_active_val = True
+
+        alt_mode_val = bool(alt_val is not None and alt_val >= 0.5) if alt_val is not None else None
+        hdg_mode_val = bool(hdg_val is not None and hdg_val >= 0.5) if hdg_val is not None else None
+        nav_mode_val = bool(nav_val is not None and nav_val >= 0.5) if nav_val is not None else None
+        app_mode_val = bool(app_val is not None and app_val >= 0.5) if app_val is not None else None
+
+        autopilot = Autopilot(
+            ap_engaged=ap_engaged_val,
+            fd_active=fd_active_val,
+            heading_mode=hdg_mode_val,
+            altitude_mode=alt_mode_val,
+            nav_mode=nav_mode_val,
+            approach_mode=app_mode_val,
+            target_altitude_ft=tgt_alt,
+            target_heading_deg=tgt_hdg,
+            target_course_deg=tgt_crs,
+            target_speed_kt=tgt_spd,
+            target_vvi_fpm=tgt_vvi,
+            fd_pitch_deg=fd_p,
+            fd_roll_deg=fd_r,
+            quality=ap_quality,
+            last_update=now_dt if ap_quality == ChannelQuality.GOOD else None,
+        )
+
         # Return snapshot
         return TelemetrySnapshot(
             timestamp=now_dt,
@@ -570,5 +644,6 @@ class TelemetryParser:
             controls=controls,
             engine=engine,
             flight_times=flight_times,
+            autopilot=autopilot,
             raw_channels=dict(self._raw_channels),
         )

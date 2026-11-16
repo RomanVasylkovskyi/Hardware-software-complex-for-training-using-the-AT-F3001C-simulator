@@ -236,6 +236,51 @@ def pack_real_row_to_xplane_udp(row: Dict[str, Optional[float]]) -> bytes:
         XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
     )
 
+    # 16. Channel 21: Flight Director (pitch, roll, hdg)
+    fd_pitch = sanitize(row.get("fd_pitch_deg", row.get("pitch_deg", 0.0)))
+    fd_roll = sanitize(row.get("fd_roll_deg", 0.0))
+    ch21 = struct.pack(
+        "<i8f",
+        21,
+        fd_pitch, fd_roll, XPLANE_NULL,
+        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
+    )
+
+    # 17. Channel 117: Autopilot Reference (alt, vvi, spd)
+    tgt_alt = sanitize(row.get("target_altitude_ft", 2000.0))
+    tgt_vvi = sanitize(row.get("target_vvi_fpm", 0.0))
+    tgt_spd = sanitize(row.get("target_speed_kt", 110.0))
+    ch117 = struct.pack(
+        "<i8f",
+        117,
+        tgt_alt, tgt_vvi, tgt_spd,
+        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
+    )
+
+    # 18. Channel 118: Autopilot Nav & Heading (hdg, nav2, crs)
+    tgt_hdg = sanitize(row.get("target_heading_deg", 127.0))
+    tgt_crs = sanitize(row.get("target_course_deg", 127.0))
+    ch118 = struct.pack(
+        "<i8f",
+        118,
+        tgt_hdg, XPLANE_NULL, tgt_crs,
+        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
+    )
+
+    # 19. Channel 119: Autopilot Modes (fd, ap, alt, hdg, nav, app)
+    fd_m = sanitize(row.get("fd_mode", 1.0))
+    ap_m = sanitize(row.get("ap_mode", 2.0))
+    alt_m = sanitize(row.get("alt_mode", 2.0))
+    hdg_m = sanitize(row.get("hdg_mode", 2.0))
+    nav_m = sanitize(row.get("nav_mode", 0.0))
+    app_m = sanitize(row.get("app_mode", 0.0))
+    ch119 = struct.pack(
+        "<i8f",
+        119,
+        fd_m, ap_m, alt_m, hdg_m, nav_m, app_m,
+        XPLANE_NULL, XPLANE_NULL
+    )
+
     return (
         XPLANE_HEADER
         + ch0
@@ -253,6 +298,10 @@ def pack_real_row_to_xplane_udp(row: Dict[str, Optional[float]]) -> bytes:
         + ch43
         + ch47
         + ch62
+        + ch21
+        + ch117
+        + ch118
+        + ch119
     )
 
 

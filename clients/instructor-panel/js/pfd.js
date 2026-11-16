@@ -26,6 +26,20 @@ class PrimaryFlightDisplay {
     this.altitude = 0;
     this.heading = 0;
     this.verticalSpeed = 0;
+
+    // Autopilot & Flight Director real-time state
+    this.apEngaged = false;
+    this.fdActive = false;
+    this.headingMode = false;
+    this.altitudeMode = false;
+    this.navMode = false;
+    this.approachMode = false;
+    this.targetAltitude = null;
+    this.targetHeading = null;
+    this.targetCourse = null;
+    this.targetSpeed = null;
+    this.fdPitch = null;
+    this.fdRoll = null;
     
     // Resize handling with high-DPI scaling
     this.resize();
@@ -74,6 +88,35 @@ class PrimaryFlightDisplay {
       if (this.telemetry.vertical_speed_fpm !== null && this.telemetry.vertical_speed_fpm !== undefined) {
         this.verticalSpeed = this.telemetry.vertical_speed_fpm;
       }
+
+      // Autopilot & Flight Director telemetry mapping
+      const ap = (this.telemetry.autopilot && typeof this.telemetry.autopilot === 'object') ? this.telemetry.autopilot : {};
+      this.apEngaged = Boolean(this.telemetry.ap_engaged ?? ap.ap_engaged);
+      this.fdActive = Boolean(this.telemetry.fd_active ?? ap.fd_active ?? this.apEngaged);
+      this.headingMode = Boolean(this.telemetry.heading_mode ?? ap.heading_mode);
+      this.altitudeMode = Boolean(this.telemetry.altitude_mode ?? ap.altitude_mode);
+      this.navMode = Boolean(this.telemetry.nav_mode ?? ap.nav_mode);
+      this.approachMode = Boolean(this.telemetry.approach_mode ?? ap.approach_mode);
+
+      this.targetAltitude = this.telemetry.target_altitude_ft ?? ap.target_altitude_ft ?? null;
+      this.targetHeading = this.telemetry.target_heading_deg ?? ap.target_heading_deg ?? null;
+      this.targetCourse = this.telemetry.target_course_deg ?? ap.target_course_deg ?? null;
+      this.targetSpeed = this.telemetry.target_speed_kt ?? ap.target_speed_kt ?? null;
+      this.fdPitch = this.telemetry.fd_pitch_deg ?? ap.fd_pitch_deg ?? null;
+      this.fdRoll = this.telemetry.fd_roll_deg ?? ap.fd_roll_deg ?? null;
+    } else {
+      this.apEngaged = false;
+      this.fdActive = false;
+      this.headingMode = false;
+      this.altitudeMode = false;
+      this.navMode = false;
+      this.approachMode = false;
+      this.targetAltitude = null;
+      this.targetHeading = null;
+      this.targetCourse = null;
+      this.targetSpeed = null;
+      this.fdPitch = null;
+      this.fdRoll = null;
     }
   }
 
@@ -114,44 +157,44 @@ class PrimaryFlightDisplay {
     const hasVS = this.isOnline && this.telemetry &&
       this.telemetry.vertical_speed_fpm !== null && this.telemetry.vertical_speed_fpm !== undefined;
 
-    // 1. Render Attitude Director Indicator (ADI)
+    // 1. Render Attitude Director Indicator (ADI) with Flight Director
     if (hasAttitude) {
-      this.drawADI(adiX, adiY, adiW, adiH, this.pitch, this.roll);
+      this.drawADI(adiX, adiY, adiW, adiH, this.pitch, this.roll, this.fdActive, this.fdPitch, this.fdRoll);
     } else {
       this.drawFailBox(adiX, adiY, adiW, adiH, 'ATT FAIL', true);
     }
 
     // 2. Render Airspeed Tape (Left)
     if (hasAirspeed) {
-      this.drawAirspeedTape(0, adiY, tapeWidth, adiH, this.airspeed);
+      this.drawAirspeedTape(0, adiY, tapeWidth, adiH, this.airspeed, this.targetSpeed);
     } else {
       this.drawFailBox(0, adiY, tapeWidth, adiH, 'IAS FAIL', false);
     }
 
     // 3. Render Altitude Tape & VSI (Right)
     if (hasAltitude) {
-      this.drawAltitudeTape(w - tapeWidth, adiY, tapeWidth, adiH, this.altitude, hasVS ? this.verticalSpeed : null);
+      this.drawAltitudeTape(w - tapeWidth, adiY, tapeWidth, adiH, this.altitude, hasVS ? this.verticalSpeed : null, this.targetAltitude);
     } else {
       this.drawFailBox(w - tapeWidth, adiY, tapeWidth, adiH, 'ALT FAIL', false);
     }
 
-    // 4. Render Heading Tape (Bottom)
+    // 4. Render Heading Tape (Bottom) with Desired Heading & Course Bug
     if (hasHeading) {
-      this.drawHeadingTape(adiX, h - headingHeight, adiW, headingHeight, this.heading);
+      this.drawHeadingTape(adiX, h - headingHeight, adiW, headingHeight, this.heading, this.targetHeading, this.targetCourse);
     } else {
       this.drawFailBox(adiX, h - headingHeight, adiW, headingHeight, 'HDG FAIL', false);
     }
 
-    // 5. Render Top Mode / Annunciator Bar
+    // 5. Render Top Mode / Annunciator Bar (Dynamic AP/FD/HDG/ALT status)
     this.drawTopBar(0, 0, w, topBarHeight);
 
     requestAnimationFrame(this.render);
   }
 
   /**
-   * Draw Artificial Horizon, Pitch Ladder, Roll Arc, and Aircraft Symbol
+   * Draw Artificial Horizon, Pitch Ladder, Roll Arc, Aircraft Symbol, and Flight Director
    */
-  drawADI(x, y, w, h, pitch, roll) {
+  drawADI(x, y, w, h, pitch, roll, fdActive = false, fdPitch = null, fdRoll = null) {
     const ctx = this.ctx;
     ctx.save();
     
@@ -301,6 +344,58 @@ class PrimaryFlightDisplay {
     // Aircraft Reference Symbol (Yellow Boresight Wings & Center Square)
     const wingW = 44;
     const wingH = 6;
+
+    // Flight Director Command Bars (Garmin G1000 Single-Cue Magenta V-Bar)
+    if (fdActive) {
+      ctx.save();
+      const cmdPitch = (fdPitch !== null && fdPitch !== undefined) ? fdPitch : pitch;
+      const cmdRoll = (fdRoll !== null && fdRoll !== undefined) ? fdRoll : 0;
+      
+      const fdY = cy - ((cmdPitch - pitch) * pixelsPerDeg);
+      
+      ctx.translate(cx, fdY);
+      ctx.rotate((-cmdRoll * Math.PI) / 180);
+
+      // Magenta Flight Director V-bar (Delta chevron cue)
+      ctx.fillStyle = '#d946ef'; // Authentic avionics magenta / violet
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1.5;
+
+      // Left Wing of V-bar
+      ctx.beginPath();
+      ctx.moveTo(-wingW - 14, 2);
+      ctx.lineTo(-14, -7);
+      ctx.lineTo(-14, -1);
+      ctx.lineTo(-wingW - 14, 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Right Wing of V-bar
+      ctx.beginPath();
+      ctx.moveTo(wingW + 14, 2);
+      ctx.lineTo(14, -7);
+      ctx.lineTo(14, -1);
+      ctx.lineTo(wingW + 14, 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Center Peak of V-bar
+      ctx.beginPath();
+      ctx.moveTo(-14, -7);
+      ctx.lineTo(0, -15);
+      ctx.lineTo(14, -7);
+      ctx.lineTo(14, -1);
+      ctx.lineTo(0, -9);
+      ctx.lineTo(-14, -1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
     ctx.fillStyle = '#ffeb3b';
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 1.5;
@@ -329,7 +424,7 @@ class PrimaryFlightDisplay {
   /**
    * Draw Moving Airspeed Tape with G1000-style speed bands
    */
-  drawAirspeedTape(x, y, w, h, speed) {
+  drawAirspeedTape(x, y, w, h, speed, targetSpeed = null) {
     const ctx = this.ctx;
     ctx.save();
 
@@ -419,13 +514,30 @@ class PrimaryFlightDisplay {
     ctx.textAlign = 'left';
     ctx.fillText('IAS', x + 5, y + 14);
 
+    // Selected Target Airspeed Bug & Readout
+    if (targetSpeed !== null && targetSpeed !== undefined) {
+      const tgtY = cy - (targetSpeed - speed) * pxPerKnot;
+      if (tgtY >= y + 10 && tgtY <= y + h - 10) {
+        ctx.fillStyle = '#38bdf8';
+        ctx.strokeStyle = '#020617';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x + w - 2, tgtY);
+        ctx.lineTo(x + w - 10, tgtY - 5);
+        ctx.lineTo(x + w - 10, tgtY + 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
     ctx.restore();
   }
 
   /**
-   * Draw Moving Altitude Tape and Vertical Speed Indicator
+   * Draw Moving Altitude Tape, Vertical Speed Indicator, and Target Altitude Bug
    */
-  drawAltitudeTape(x, y, w, h, altitude, vs) {
+  drawAltitudeTape(x, y, w, h, altitude, vs, targetAltitude = null) {
     const ctx = this.ctx;
     ctx.save();
 
@@ -471,6 +583,23 @@ class PrimaryFlightDisplay {
       }
     }
 
+    // Selected Target Altitude Bug (Cyan/Magenta notch bug on tape)
+    if (targetAltitude !== null && targetAltitude !== undefined) {
+      const tgtY = cy - (targetAltitude - altitude) * pxPerFoot;
+      if (tgtY >= y + 26 && tgtY <= y + h - 22) {
+        ctx.fillStyle = '#38bdf8';
+        ctx.strokeStyle = '#020617';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(x + 2, tgtY);
+        ctx.lineTo(x + 11, tgtY - 6);
+        ctx.lineTo(x + 11, tgtY + 6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
     // Current Altitude Readout Pointer (Center drum window)
     const boxW = w - 16;
     const boxH = 28;
@@ -495,12 +624,30 @@ class PrimaryFlightDisplay {
     ctx.textBaseline = 'middle';
     ctx.fillText(Math.round(altitude).toString(), x + 22, cy);
 
-    // Altitude label & Baro setting
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText('ALT', x + w - 6, y + 14);
+    // Top Selected Altitude Window (G1000 cyan readout box)
+    if (targetAltitude !== null && targetAltitude !== undefined) {
+      const selBoxW = w - 14;
+      const selBoxH = 19;
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.9)';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(x + 7, y + 4, selBoxW, selBoxH);
+      ctx.strokeRect(x + 7, y + 4, selBoxW, selBoxH);
 
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 11px "Consolas", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${Math.round(targetAltitude)}`, x + 7 + selBoxW / 2, y + 4 + selBoxH / 2);
+    } else {
+      // Altitude label
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('ALT', x + w - 6, y + 14);
+    }
+
+    // Baro setting
     ctx.fillStyle = '#38bdf8';
     ctx.font = '9px monospace';
     ctx.textAlign = 'center';
@@ -525,9 +672,9 @@ class PrimaryFlightDisplay {
   }
 
   /**
-   * Draw Moving Heading Tape / Compass Arc
+   * Draw Moving Heading Tape / Compass Arc with Desired Heading & Course Bug
    */
-  drawHeadingTape(x, y, w, h, heading) {
+  drawHeadingTape(x, y, w, h, heading, targetHeading = null, targetCourse = null) {
     const ctx = this.ctx;
     ctx.save();
 
@@ -584,21 +731,87 @@ class PrimaryFlightDisplay {
       }
     }
 
-    // Lubber Line (Center reference triangle)
+    // ----------------- Desired Heading Bug (Garmin G1000 Cyan Bracket Bug) -----------------
+    let bugOnScreen = false;
+    let bugDiff = 0;
+    if (targetHeading !== null && targetHeading !== undefined) {
+      let diff = (targetHeading - hdg) % 360;
+      if (diff < -180) diff += 360;
+      if (diff > 180) diff -= 360;
+      bugDiff = diff;
+      const bugX = cx + diff * pxPerDeg;
+
+      if (bugX >= x + 10 && bugX <= x + w - 10) {
+        bugOnScreen = true;
+        const bw = 18;
+        const bh = 14;
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.45)';
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2.0;
+
+        ctx.beginPath();
+        ctx.moveTo(bugX - bw / 2, y + bh);
+        ctx.lineTo(bugX - bw / 2, y + 1);
+        ctx.lineTo(bugX + bw / 2, y + 1);
+        ctx.lineTo(bugX + bw / 2, y + bh);
+        ctx.stroke();
+        ctx.fillRect(bugX - bw / 2, y + 1, bw, bh - 1);
+
+        // Vertical cyan dashed guide tick down the tape
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+        ctx.lineWidth = 1.0;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(bugX, y + bh);
+        ctx.lineTo(bugX, y + h - 28);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    // ----------------- Desired Course Needle (Magenta Pointer) -----------------
+    if (targetCourse !== null && targetCourse !== undefined) {
+      let crsDiff = (targetCourse - hdg) % 360;
+      if (crsDiff < -180) crsDiff += 360;
+      if (crsDiff > 180) crsDiff -= 360;
+      const crsX = cx + crsDiff * pxPerDeg;
+
+      if (crsX >= x + 10 && crsX <= x + w - 10) {
+        ctx.fillStyle = '#e056fd';
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(crsX, y + 2);
+        ctx.lineTo(crsX - 6, y + 12);
+        ctx.lineTo(crsX - 2, y + 12);
+        ctx.lineTo(crsX - 2, y + 24);
+        ctx.lineTo(crsX + 2, y + 24);
+        ctx.lineTo(crsX + 2, y + 12);
+        ctx.lineTo(crsX + 6, y + 12);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    // Lubber Line (Center reference triangle - Actual Aircraft Heading)
     ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1.0;
     ctx.beginPath();
     ctx.moveTo(cx, y);
-    ctx.lineTo(cx - 7, y + 10);
-    ctx.lineTo(cx + 7, y + 10);
+    ctx.lineTo(cx - 7, y + 11);
+    ctx.lineTo(cx + 7, y + 11);
     ctx.closePath();
     ctx.fill();
+    ctx.stroke();
 
-    // Current Heading Readout Box
-    const boxW = 54;
+    // Actual Heading Readout Box (Center)
+    const boxW = 56;
     const boxH = 22;
     ctx.fillStyle = '#020617';
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.8;
     ctx.fillRect(cx - boxW / 2, y + h - boxH - 4, boxW, boxH);
     ctx.strokeRect(cx - boxW / 2, y + h - boxH - 4, boxW, boxH);
 
@@ -608,11 +821,52 @@ class PrimaryFlightDisplay {
     ctx.textBaseline = 'middle';
     ctx.fillText(`${Math.round(hdg).toString().padStart(3, '0')}°`, cx, y + h - boxH / 2 - 4);
 
+    // Left Overlay Badge: Selected Desired Heading (G1000 Cyan Box: HDG 127°)
+    if (targetHeading !== null && targetHeading !== undefined) {
+      const hdgBoxW = 82;
+      const hdgBoxH = 21;
+      const hdgBoxX = x + 6;
+      const hdgBoxY = y + h - hdgBoxH - 5;
+
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.88)';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(hdgBoxX, hdgBoxY, hdgBoxW, hdgBoxH);
+      ctx.strokeRect(hdgBoxX, hdgBoxY, hdgBoxW, hdgBoxH);
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 11px "Consolas", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const arrowIndicator = !bugOnScreen ? (bugDiff < 0 ? '◄ ' : ' ►') : '';
+      ctx.fillText(`HDG ${Math.round(targetHeading).toString().padStart(3, '0')}°${arrowIndicator}`, hdgBoxX + hdgBoxW / 2, hdgBoxY + hdgBoxH / 2);
+    }
+
+    // Right Overlay Badge: Desired Course (G1000 Magenta Box: CRS 354°)
+    if (targetCourse !== null && targetCourse !== undefined) {
+      const crsBoxW = 76;
+      const crsBoxH = 21;
+      const crsBoxX = x + w - crsBoxW - 6;
+      const crsBoxY = y + h - crsBoxH - 5;
+
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.88)';
+      ctx.strokeStyle = '#d946ef';
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(crsBoxX, crsBoxY, crsBoxW, crsBoxH);
+      ctx.strokeRect(crsBoxX, crsBoxY, crsBoxW, crsBoxH);
+
+      ctx.fillStyle = '#f0abfc';
+      ctx.font = 'bold 11px "Consolas", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`CRS ${Math.round(targetCourse).toString().padStart(3, '0')}°`, crsBoxX + crsBoxW / 2, crsBoxY + crsBoxH / 2);
+    }
+
     ctx.restore();
   }
 
   /**
-   * Top Autopilot / Flight Mode Annunciator Bar
+   * Top Autopilot / Flight Mode Annunciator Bar (Dynamic AP / FD / HDG / ALT Status)
    */
   drawTopBar(x, y, w, h) {
     const ctx = this.ctx;
@@ -622,15 +876,77 @@ class PrimaryFlightDisplay {
     ctx.lineWidth = 1;
     ctx.strokeRect(x, y, w, h);
 
-    ctx.font = 'bold 11px "Consolas", monospace';
     ctx.textBaseline = 'middle';
+    const pillY = y + 7;
+    const pillH = h - 14;
+    let curX = x + 10;
 
-    // Left: AP Status
-    ctx.fillStyle = '#22c55e';
-    ctx.textAlign = 'left';
-    ctx.fillText('AP  |  FD  |  HDG  |  ALT', x + 12, y + h / 2);
+    // Helper to draw discrete AFCS annunciator pill badges
+    const drawModePill = (label, active, activeColor = '#4ade80', subVal = null, subColor = '#38bdf8') => {
+      ctx.font = 'bold 11px "Consolas", monospace';
+      const mainW = ctx.measureText(label).width + 14;
+      const subW = (subVal && active) ? (ctx.measureText(subVal).width + 8) : 0;
+      const totalW = mainW + subW;
+
+      if (active) {
+        ctx.fillStyle = 'rgba(34, 197, 94, 0.2)';
+        ctx.strokeStyle = activeColor;
+        ctx.lineWidth = 1.2;
+      } else {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.5)';
+        ctx.strokeStyle = 'rgba(71, 85, 105, 0.35)';
+        ctx.lineWidth = 1.0;
+      }
+
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(curX, pillY, totalW, pillH, 3);
+      } else {
+        ctx.rect(curX, pillY, totalW, pillH);
+      }
+      ctx.fill();
+      ctx.stroke();
+
+      // Main label
+      ctx.textAlign = 'left';
+      ctx.fillStyle = active ? activeColor : '#64748b';
+      ctx.fillText(label, curX + 7, pillY + pillH / 2);
+
+      // Sub value if active (e.g. 127° or 2000 FT)
+      if (active && subVal) {
+        ctx.fillStyle = subColor;
+        ctx.fillText(subVal, curX + mainW - 4, pillY + pillH / 2);
+      }
+
+      curX += totalW + 8;
+    };
+
+    // 1. AP (Autopilot Master Servo)
+    drawModePill(this.apEngaged ? '● AP' : 'AP OFF', this.apEngaged, '#4ade80');
+
+    // 2. FD (Flight Director Command Bars)
+    drawModePill(this.fdActive ? '● FD' : 'FD OFF', this.fdActive, '#f0abfc');
+
+    // 3. Lateral Mode (HDG / NAV)
+    if (this.headingMode) {
+      const hdgText = this.targetHeading !== null ? `${Math.round(this.targetHeading)}°` : '';
+      drawModePill('● HDG', true, '#4ade80', hdgText, '#38bdf8');
+    } else if (this.navMode) {
+      drawModePill('● NAV', true, '#4ade80');
+    } else {
+      drawModePill('HDG OFF', false);
+    }
+
+    // 4. Vertical Mode (ALT / VS)
+    if (this.altitudeMode) {
+      const altText = this.targetAltitude !== null ? `${Math.round(this.targetAltitude)} FT` : '';
+      drawModePill('● ALT', true, '#4ade80', altText, '#e056fd');
+    } else {
+      drawModePill('ALT OFF', false);
+    }
 
     // Right: Airport / Runway
+    ctx.font = 'bold 11px "Consolas", monospace';
     ctx.fillStyle = '#38bdf8';
     ctx.textAlign = 'right';
     ctx.fillText('UKLL RWY 13', x + w - 12, y + h / 2);
