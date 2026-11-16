@@ -661,28 +661,35 @@ class TelemetryParser:
         alt_val = ch117[2] if (len(ch117) > 2 and ch117[2] is not None) else (ch119[2] if len(ch119) > 2 else None)
         alt_mode_val = bool(alt_val is not None and alt_val > 0.0)
 
-        # Autopilot reference targets (ch118[5] is active target altitude, index 3 is alt-dial)
+        # Autopilot reference targets
+        # In Garmin G1000 X-Plane 11:
+        # ch118[3] is _dial,__alt (dialed altitude bug set by pilot on G1000, e.g. 3000 FT)
+        # ch118[5] is __use,__alt (active captured altitude hold, e.g. 1000 FT)
+        # ch118[2] is __set,__vvi (selected target vertical speed / climb rate, e.g. 500 FPM)
         tgt_alt = None
-        if len(ch118) > 5 and ch118[5] is not None and ch118[5] > 0:
-            tgt_alt = ch118[5]
-        elif len(ch118) > 3 and ch118[3] is not None and ch118[3] > 0:
+        if len(ch118) > 3 and ch118[3] is not None and ch118[3] > 0:
             tgt_alt = ch118[3]
-        elif len(ch117) > 0 and ch117[0] is not None:
+        elif len(ch118) > 5 and ch118[5] is not None and ch118[5] > 0:
+            tgt_alt = ch118[5]
+        elif len(ch117) > 0 and ch117[0] is not None and ch117[0] > 0:
             tgt_alt = ch117[0]
 
+        # Selected vertical speed / climb rate in FPM (ch118[2] is __set,__vvi; fallback ch118[4], ch117[1])
         tgt_vvi = None
-        if len(ch118) > 4 and ch118[4] is not None:
+        if len(ch118) > 2 and ch118[2] is not None and abs(ch118[2]) > 0:
+            tgt_vvi = ch118[2]
+        elif len(ch118) > 4 and ch118[4] is not None and abs(ch118[4]) > 0:
             tgt_vvi = ch118[4]
-        elif len(ch117) > 1 and ch117[1] is not None:
+        elif len(ch117) > 1 and ch117[1] is not None and abs(ch117[1]) > 0:
             tgt_vvi = ch117[1]
 
         tgt_spd = ch117[2] if len(ch117) > 2 else None
 
-        # Autopilot nav & heading (ch118, ch97, ch102)
+        # Autopilot nav & heading (ch118[0] is heading bug; ch102[2] or ch97[2] or ch118[1] is course)
         tgt_hdg = ch118[0] if len(ch118) > 0 else None
-        tgt_crs = ch118[2] if len(ch118) > 2 and ch118[2] is not None else (
-            ch102[2] if len(ch102) > 2 and ch102[2] is not None else (
-                ch97[2] if len(ch97) > 2 else None
+        tgt_crs = ch102[2] if (len(ch102) > 2 and ch102[2] is not None) else (
+            ch97[2] if len(ch97) > 2 and ch97[2] is not None else (
+                ch118[1] if (len(ch118) > 1 and ch118[1] is not None) else None
             )
         )
 

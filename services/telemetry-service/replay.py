@@ -260,13 +260,15 @@ def pack_real_row_to_xplane_udp(row: Dict[str, Optional[float]]) -> bytes:
         XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
     )
 
-    # 18. Channel 118: Autopilot Nav & Heading (hdg, nav2, crs, alt_dial, vvi_dial, alt_target, fd_roll, fd_pitch)
+    # 18. Channel 118: Autopilot Nav & Heading (hdg, nav2, set_vvi, alt_dial, vvi_dial, alt_target, fd_roll, fd_pitch)
     tgt_hdg = sanitize(row.get("target_heading_deg", 127.0))
     tgt_crs = sanitize(row.get("target_course_deg", 127.0))
+    tgt_vvi = sanitize(row.get("target_vvi_fpm", 500.0))
+    tgt_alt = sanitize(row.get("target_altitude_ft", 3000.0))
     ch118 = struct.pack(
         "<i8f",
         118,
-        tgt_hdg, XPLANE_NULL, tgt_crs,
+        tgt_hdg, tgt_crs, tgt_vvi,
         tgt_alt, tgt_vvi, tgt_alt, fd_roll, fd_pitch
     )
 

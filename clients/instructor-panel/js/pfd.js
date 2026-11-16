@@ -38,6 +38,7 @@ class PrimaryFlightDisplay {
     this.targetHeading = null;
     this.targetCourse = null;
     this.targetSpeed = null;
+    this.targetVvi = null;
     this.fdPitch = null;
     this.fdRoll = null;
 
@@ -109,6 +110,7 @@ class PrimaryFlightDisplay {
       this.targetHeading = this.telemetry.target_heading_deg ?? ap.target_heading_deg ?? null;
       this.targetCourse = this.telemetry.target_course_deg ?? ap.target_course_deg ?? null;
       this.targetSpeed = this.telemetry.target_speed_kt ?? ap.target_speed_kt ?? null;
+      this.targetVvi = (typeof this.telemetry.target_vvi_fpm === 'number') ? this.telemetry.target_vvi_fpm : (typeof ap.target_vvi_fpm === 'number' ? ap.target_vvi_fpm : null);
       this.fdPitch = this.telemetry.fd_pitch_deg ?? ap.fd_pitch_deg ?? null;
       this.fdRoll = this.telemetry.fd_roll_deg ?? ap.fd_roll_deg ?? null;
 
@@ -133,6 +135,7 @@ class PrimaryFlightDisplay {
       this.targetHeading = null;
       this.targetCourse = null;
       this.targetSpeed = null;
+      this.targetVvi = null;
       this.fdPitch = null;
       this.fdRoll = null;
       this.navId = 'UKLL';
@@ -152,7 +155,7 @@ class PrimaryFlightDisplay {
     ctx.fillRect(0, 0, w, h);
 
     // Layout geometry
-    const tapeWidth = Math.min(85, w * 0.18);
+    const tapeWidth = Math.min(96, Math.max(86, w * 0.185));
     const headingHeight = Math.min(65, h * 0.16);
     const topBarHeight = 42;
     
@@ -193,9 +196,9 @@ class PrimaryFlightDisplay {
       this.drawFailBox(0, adiY, tapeWidth, adiH, 'IAS FAIL', false);
     }
 
-    // 3. Render Altitude Tape & VSI (Right) with Target Altitude & Baro Setting
+    // 3. Render Altitude Tape & VSI (Right) with Target Altitude & Baro Setting & Target VVI
     if (hasAltitude) {
-      this.drawAltitudeTape(w - tapeWidth, adiY, tapeWidth, adiH, this.altitude, hasVS ? this.verticalSpeed : null, this.targetAltitude, this.baroSetting);
+      this.drawAltitudeTape(w - tapeWidth, adiY, tapeWidth, adiH, this.altitude, hasVS ? this.verticalSpeed : null, this.targetAltitude, this.baroSetting, this.targetVvi);
     } else {
       this.drawFailBox(w - tapeWidth, adiY, tapeWidth, adiH, 'ALT FAIL', false);
     }
@@ -569,18 +572,29 @@ class PrimaryFlightDisplay {
   /**
    * Draw Moving Altitude Tape, Vertical Speed Indicator, Target Altitude Bug, and Baro Box
    */
-  drawAltitudeTape(x, y, w, h, altitude, vs, targetAltitude = null, baroSetting = 29.92) {
+  drawAltitudeTape(x, y, w, h, altitude, vs, targetAltitude = null, baroSetting = 29.92, targetVvi = null) {
     const ctx = this.ctx;
     ctx.save();
 
-    // Background
+    // Layout: Altitude Tape on the left, Vertical Speed Indicator (VSI) on the right
+    const vsiW = Math.min(32, Math.max(26, Math.floor(w * 0.34)));
+    const altTapeW = w - vsiW;
+
+    // Background for Altitude Tape
     ctx.fillStyle = '#101620';
-    ctx.fillRect(x, y, w, h);
+    ctx.fillRect(x, y, altTapeW, h);
     ctx.strokeStyle = '#334155';
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(x, y, w, h);
+    ctx.strokeRect(x, y, altTapeW, h);
 
-    // Clip
+    // Background for VSI Tape
+    ctx.fillStyle = 'rgba(11, 17, 32, 0.75)';
+    ctx.fillRect(x + altTapeW, y, vsiW, h);
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1.0;
+    ctx.strokeRect(x + altTapeW, y, vsiW, h);
+
+    // Clip entire right instrument area
     ctx.beginPath();
     ctx.rect(x, y, w, h);
     ctx.clip();
@@ -605,16 +619,16 @@ class PrimaryFlightDisplay {
 
       const isMajor = a % 100 === 0;
       const isHalf = a % 50 === 0;
-      const tickLen = isMajor ? 12 : (isHalf ? 8 : 5);
+      const tickLen = isMajor ? 11 : (isHalf ? 7 : 4);
 
       ctx.lineWidth = isMajor ? 1.8 : 1.0;
       ctx.beginPath();
-      ctx.moveTo(x + 10, ay);
-      ctx.lineTo(x + 10 + tickLen, ay);
+      ctx.moveTo(x + 6, ay);
+      ctx.lineTo(x + 6 + tickLen, ay);
       ctx.stroke();
 
       if (isMajor) {
-        ctx.fillText(a.toString(), x + 26, ay);
+        ctx.fillText(a.toString(), x + 20, ay);
       }
     }
 
@@ -627,13 +641,13 @@ class PrimaryFlightDisplay {
         ctx.lineWidth = 1.2;
 
         // Draw G1000 style cyan bracket tab on the left edge of the tape
-        const bugW = 12;
-        const bugH = 20;
+        const bugW = 10;
+        const bugH = 18;
         ctx.beginPath();
         ctx.moveTo(x + 2, tgtY - bugH / 2);
         ctx.lineTo(x + 2 + bugW, tgtY - bugH / 2);
         ctx.lineTo(x + 2 + bugW, tgtY - 4);
-        ctx.lineTo(x + 2 + bugW + 5, tgtY); // triangular notch pointing right at tick
+        ctx.lineTo(x + 2 + bugW + 4, tgtY); // triangular notch pointing right at tick
         ctx.lineTo(x + 2 + bugW, tgtY + 4);
         ctx.lineTo(x + 2 + bugW, tgtY + bugH / 2);
         ctx.lineTo(x + 2, tgtY + bugH / 2);
@@ -647,61 +661,88 @@ class PrimaryFlightDisplay {
           ctx.font = 'bold 11px "Consolas", monospace';
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
-          ctx.fillText(Math.round(targetAltitude).toString(), x + bugW + 9, tgtY);
+          ctx.fillText(Math.round(targetAltitude).toString(), x + bugW + 7, tgtY);
         }
       }
     }
 
     // Current Altitude Readout Pointer (Center drum window)
-    const boxW = w - 16;
-    const boxH = 28;
+    const boxW = altTapeW - 12;
+    const boxH = 26;
     ctx.fillStyle = '#000000';
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1.6;
 
     ctx.beginPath();
-    ctx.moveTo(x + 8, cy);
-    ctx.lineTo(x + 16, cy - boxH / 2);
-    ctx.lineTo(x + 8 + boxW, cy - boxH / 2);
-    ctx.lineTo(x + 8 + boxW, cy + boxH / 2);
-    ctx.lineTo(x + 16, cy + boxH / 2);
+    ctx.moveTo(x + 6, cy);
+    ctx.lineTo(x + 13, cy - boxH / 2);
+    ctx.lineTo(x + 6 + boxW, cy - boxH / 2);
+    ctx.lineTo(x + 6 + boxW, cy + boxH / 2);
+    ctx.lineTo(x + 13, cy + boxH / 2);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
     // Altitude digits (Garmin G1000 white digits on black background)
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 16px "Consolas", "Roboto", monospace';
+    ctx.font = 'bold 15px "Consolas", "Roboto", monospace';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(Math.round(altitude).toString(), x + 20, cy);
+    ctx.fillText(Math.round(altitude).toString(), x + 16, cy);
 
-    // Top Selected Altitude Window (G1000 cyan readout box)
+    // -----------------------------------------------------------------
+    // TOP DUAL READOUT BOXES:
+    // 1. Selected Target Altitude Window (Cyan readout over Altitude Tape)
+    // 2. Selected Target Vertical Speed Window (Cyan readout over VSI)
+    // -----------------------------------------------------------------
+    const altBoxW = altTapeW - 4;
+    const altBoxH = 20;
+    const altBoxX = x + 2;
+    const altBoxY = y + 4;
+
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(altBoxX, altBoxY, altBoxW, altBoxH);
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(altBoxX, altBoxY, altBoxW, altBoxH);
+
     if (targetAltitude !== null && targetAltitude !== undefined) {
-      const selBoxW = w - 14;
-      const selBoxH = 20;
-      ctx.fillStyle = '#000000';
-      ctx.strokeStyle = '#06b6d4';
-      ctx.lineWidth = 1.5;
-      ctx.fillRect(x + 7, y + 4, selBoxW, selBoxH);
-      ctx.strokeRect(x + 7, y + 4, selBoxW, selBoxH);
-
-      ctx.fillStyle = '#06b6d4';
-      ctx.font = 'bold 12px "Consolas", monospace';
+      ctx.fillStyle = '#00f0ff'; // Authentic G1000 Cyan
+      ctx.font = 'bold 13px "Consolas", monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`${Math.round(targetAltitude)}`, x + 7 + selBoxW / 2, y + 4 + selBoxH / 2);
+      ctx.fillText(`${Math.round(targetAltitude)}`, altBoxX + altBoxW / 2, altBoxY + altBoxH / 2);
     } else {
-      // Altitude label
-      ctx.fillStyle = '#94a3b8';
+      ctx.fillStyle = '#64748b';
       ctx.font = 'bold 10px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText('ALT', x + w - 6, y + 14);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('ALT', altBoxX + altBoxW / 2, altBoxY + altBoxH / 2);
+    }
+
+    // Top Selected Vertical Speed Box (e.g. 500)
+    const vsiBoxW = vsiW - 4;
+    const vsiBoxH = 20;
+    const vsiBoxX = x + altTapeW + 2;
+    const vsiBoxY = y + 4;
+
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(vsiBoxX, vsiBoxY, vsiBoxW, vsiBoxH);
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(vsiBoxX, vsiBoxY, vsiBoxW, vsiBoxH);
+
+    if (targetVvi !== null && targetVvi !== undefined && Math.abs(targetVvi) > 0) {
+      ctx.fillStyle = '#00f0ff'; // Authentic G1000 Cyan
+      ctx.font = 'bold 11px "Consolas", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${Math.round(targetVvi)}`, vsiBoxX + vsiBoxW / 2, vsiBoxY + vsiBoxH / 2);
     }
 
     // Bottom Barometric Pressure Setting Window (Garmin G1000 authentic cyan box)
     const baroH = 22;
-    const baroW = w - 4;
+    const baroW = altTapeW - 4;
     const baroX = x + 2;
     const baroY = y + h - baroH - 2;
 
@@ -724,19 +765,88 @@ class PrimaryFlightDisplay {
     ctx.textBaseline = 'middle';
     ctx.fillText(baroText, baroX + baroW / 2, baroY + baroH / 2);
 
-    // Vertical Speed Indicator (Right edge needle)
-    if (vs !== null && vs !== undefined) {
-      const vsiMax = 2000;
-      const clampedVS = Math.max(-vsiMax, Math.min(vsiMax, vs));
-      const vsiY = cy - (clampedVS / vsiMax) * (h * 0.35);
+    // -----------------------------------------------------------------
+    // VERTICAL SPEED INDICATOR (VSI Scale, Bug & Pointer)
+    // Range: +/- 2000 FPM (Garmin G1000 C172SP scale)
+    // -----------------------------------------------------------------
+    const vsiScaleH = h * 0.62;
+    const pxPerFpm = (vsiScaleH / 2) / 2000;
+    const vsiTicks = [
+      { fpm: 2000, label: '2' },
+      { fpm: 1500, label: null },
+      { fpm: 1000, label: '1' },
+      { fpm: 500, label: null },
+      { fpm: 0, label: null },
+      { fpm: -500, label: null },
+      { fpm: -1000, label: '1' },
+      { fpm: -1500, label: null },
+      { fpm: -2000, label: '2' },
+    ];
 
-      ctx.fillStyle = '#eab308';
+    ctx.fillStyle = '#94a3b8';
+    ctx.strokeStyle = '#64748b';
+    ctx.font = 'bold 9px "Consolas", monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+
+    for (const t of vsiTicks) {
+      const ty = cy - t.fpm * pxPerFpm;
+      const isMajor = t.label !== null || t.fpm === 0;
+      const tickLen = isMajor ? 6 : 4;
+
+      ctx.lineWidth = isMajor ? 1.4 : 1.0;
       ctx.beginPath();
-      ctx.moveTo(x + w - 2, cy);
-      ctx.lineTo(x + w - 10, vsiY);
-      ctx.lineTo(x + w - 2, vsiY);
+      ctx.moveTo(x + altTapeW, ty);
+      ctx.lineTo(x + altTapeW + tickLen, ty);
+      ctx.stroke();
+
+      if (t.label) {
+        ctx.fillText(t.label, x + w - 4, ty);
+      }
+    }
+
+    // Target Vertical Speed Bug (cyan chevron on VSI scale)
+    if (targetVvi !== null && targetVvi !== undefined && Math.abs(targetVvi) > 0) {
+      const clampedTgt = Math.max(-2000, Math.min(2000, targetVvi));
+      const tgtVsiY = cy - clampedTgt * pxPerFpm;
+
+      ctx.fillStyle = '#00f0ff';
+      ctx.strokeStyle = '#0891b2';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + altTapeW, tgtVsiY);
+      ctx.lineTo(x + altTapeW + 6, tgtVsiY - 4);
+      ctx.lineTo(x + altTapeW + 6, tgtVsiY + 4);
       ctx.closePath();
       ctx.fill();
+      ctx.stroke();
+    }
+
+    // Current Vertical Speed Pointer Needle
+    if (vs !== null && vs !== undefined) {
+      const clampedVS = Math.max(-2000, Math.min(2000, vs));
+      const vsiY = cy - clampedVS * pxPerFpm;
+
+      // Fill polygon from center line to current VS position
+      ctx.fillStyle = 'rgba(2, 132, 199, 0.5)';
+      ctx.beginPath();
+      ctx.moveTo(x + altTapeW + 1, cy);
+      ctx.lineTo(x + altTapeW + 7, vsiY);
+      ctx.lineTo(x + altTapeW + 1, vsiY);
+      ctx.closePath();
+      ctx.fill();
+
+      // Sharp indicator needle tip
+      ctx.fillStyle = '#38bdf8';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(x + altTapeW, vsiY);
+      ctx.lineTo(x + altTapeW + 7, vsiY - 3.5);
+      ctx.lineTo(x + altTapeW + 7, vsiY + 3.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
     }
 
     ctx.restore();
@@ -1107,11 +1217,11 @@ class PrimaryFlightDisplay {
 
     // CELL 3: Vertical Mode
     if (this.altitudeMode) {
-      const altNum = (this.targetAltitude !== null && this.targetAltitude !== undefined) ? Math.round(this.targetAltitude) : 1000;
+      const altNum = (this.targetAltitude !== null && this.targetAltitude !== undefined) ? Math.round(this.targetAltitude) : (this.altitude ? Math.round(this.altitude) : 3000);
       ctx.fillStyle = '#22c55e';
       ctx.fillText(`ALT ${altNum} FT`, afcsX + cellW * 2 + cellW / 2, row2CenterY);
-    } else if (this.telemetry && this.telemetry.target_vvi_fpm) {
-      const vvi = Math.round(this.telemetry.target_vvi_fpm);
+    } else if (this.targetVvi !== null && this.targetVvi !== undefined && Math.abs(this.targetVvi) > 0) {
+      const vvi = Math.round(this.targetVvi);
       ctx.fillStyle = '#22c55e';
       ctx.fillText(`VS ${vvi > 0 ? '+' : ''}${vvi}`, afcsX + cellW * 2 + cellW / 2, row2CenterY);
     }
