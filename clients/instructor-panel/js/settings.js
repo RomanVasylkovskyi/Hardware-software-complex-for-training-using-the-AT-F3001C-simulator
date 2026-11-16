@@ -198,7 +198,36 @@ class TelemetrySettingsManager {
     this.updateControlsState();
   }
 
+  updateHeaderSourceBadge(opts = {}) {
+    if (!this.headerBadge) {
+      this.headerBadge = document.getElementById('hdr-source-indicator');
+    }
+    if (!this.headerBadge) return;
+
+    const { isReplay = false, isLive = false, fileName = '', progressPct = null, source = null } = opts;
+
+    if (isReplay) {
+      this.headerBadge.className = 'source-mode-tag replay';
+      const effectiveSource = source || this.currentReplaySource;
+      const srcLabel = effectiveSource === 'local' ? 'ПК' : 'СЕРВЕР';
+      const fileLabel = fileName ? `: ${fileName}` : '';
+      const pctLabel = (typeof progressPct === 'number' && progressPct > 0)
+        ? ` [${progressPct.toFixed(0)}%]`
+        : '';
+      this.headerBadge.innerText = `РЕПЛЕЙ (${srcLabel}${fileLabel})${pctLabel}`;
+    } else if (isLive) {
+      this.headerBadge.className = 'source-mode-tag live';
+      this.headerBadge.innerText = 'ОНЛАЙН (UDP)';
+    } else {
+      this.headerBadge.className = 'source-mode-tag nodata';
+      this.headerBadge.innerText = 'nodata';
+    }
+  }
+
   updateHeaderBadge(text, isLive = false) {
+    if (!this.headerBadge) {
+      this.headerBadge = document.getElementById('hdr-source-indicator');
+    }
     if (!this.headerBadge) return;
     this.headerBadge.className = isLive ? 'source-mode-tag live' : 'source-mode-tag replay';
     this.headerBadge.innerText = text;
@@ -316,20 +345,13 @@ class TelemetrySettingsManager {
       ((data.packet_rate_hz || 0) > 0 || (data.packets_received || 0) > 0) &&
       (data.time_since_last_packet_sec === undefined || data.time_since_last_packet_sec < 4.0);
 
-    // Update Header Pill
-    if (this.headerBadge) {
-      if (this.isReplayRunning) {
-        this.headerBadge.className = 'source-mode-tag replay';
-        const name = data.file_name || 'REPLAY';
-        this.headerBadge.innerText = `REPLAY: ${name}`;
-      } else if (isLiveActive) {
-        this.headerBadge.className = 'source-mode-tag live';
-        this.headerBadge.innerText = 'LIVE UDP';
-      } else {
-        this.headerBadge.className = 'source-mode-tag nodata';
-        this.headerBadge.innerText = 'nodata';
-      }
-    }
+    // Update Header Source Status
+    this.updateHeaderSourceBadge({
+      isReplay: this.isReplayRunning,
+      isLive: isLiveActive,
+      fileName: data.file_name,
+      source: this.currentReplaySource,
+    });
 
     // Update Mode Badge in Settings Header
     const footerMode = document.getElementById('settings-active-mode-badge');
@@ -453,22 +475,13 @@ class TelemetrySettingsManager {
       (st.time_since_last_packet_sec === undefined || st.time_since_last_packet_sec < 4.0);
 
     // Header badge synchronization
-    if (this.headerBadge) {
-      if (isReplay) {
-        this.headerBadge.className = 'source-mode-tag replay';
-        if (typeof st.replay_progress_pct === 'number') {
-          this.headerBadge.innerText = `REPLAY (${st.replay_progress_pct.toFixed(0)}%)`;
-        } else {
-          this.headerBadge.innerText = 'REPLAY';
-        }
-      } else if (isLive) {
-        this.headerBadge.className = 'source-mode-tag live';
-        this.headerBadge.innerText = 'LIVE UDP';
-      } else {
-        this.headerBadge.className = 'source-mode-tag nodata';
-        this.headerBadge.innerText = 'nodata';
-      }
-    }
+    this.updateHeaderSourceBadge({
+      isReplay: isReplay,
+      isLive: isLive,
+      fileName: st.replay_file,
+      progressPct: st.replay_progress_pct,
+      source: this.currentReplaySource,
+    });
 
     // Active mode badge in settings header
     const footerMode = document.getElementById('settings-active-mode-badge');
