@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css?v=3" />
   
   <!-- Custom Avionics CSS -->
-  <link rel="stylesheet" href="css/main.css?v=34" />
+  <link rel="stylesheet" href="css/main.css?v=35" />
 </head>
 <body>
   <!-- HEADER / SYSTEM STATUS BAR -->
@@ -80,7 +80,9 @@
         </div>
         <div class="panel-controls">
           <select id="nd-layer-select" class="btn-ctrl" style="cursor:pointer; background:#0c1322; color:#38bdf8; border-color:#1e2e4a;" title="Режим відображення терейну">
-            <option value="opentopo" selected>Терейн (OpenTopo)</option>
+            <option value="garmin_taws" selected>Терейн Garmin TAWS (Небезпека висот • Red/Yellow)</option>
+            <option value="garmin_topo">Терейн Garmin Topo (Абсолютні висоти рельєфу)</option>
+            <option value="opentopo">Терейн (OpenTopo)</option>
             <option value="esritopo">Терейн (ESRI Topo)</option>
             <option value="relief">Рельєф 3D (Hillshade)</option>
             <option value="satellite">Супутник (ESRI Sat)</option>
@@ -478,7 +480,7 @@
   <!-- Avionics Modular Scripts -->
   <script src="js/audio.js?v=34"></script>
   <script src="js/pfd.js?v=39"></script>
-  <script src="js/nd.js?v=29"></script>
+  <script src="js/nd.js?v=35"></script>
   <script src="js/standby_gauges.js?v=37"></script>
   <script src="js/engine.js?v=29"></script>
   <script src="js/alerts.js?v=29"></script>

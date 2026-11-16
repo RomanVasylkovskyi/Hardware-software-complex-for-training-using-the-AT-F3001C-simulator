@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 try:
@@ -188,6 +188,56 @@ async def upload_flight_file(
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Upload proxy error: {e}")
+
+
+# ================= GARMIN TERRAIN & TOPOGRAPHY ELEVATION TILES =================
+
+TERRARIUM_CACHE_DIR = Path("/app/data/terrarium_cache") if Path("/app").exists() else Path("data/terrarium_cache")
+try:
+    TERRARIUM_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+
+
+@app.get("/api/tiles/terrarium/{z}/{x}/{y}.png", summary="Terrarium Elevation Tiles Proxy")
+async def get_terrarium_elevation_tile(z: int, x: int, y: int):
+    """
+    Proxies and caches Terrarium RGB elevation tiles from AWS Open Data (NASA SRTM elevation model).
+    Formula: elevation_meters = (R * 256.0 + G + B / 256.0) - 32768.0.
+    Cached on disk and served with immutable browser caching to eliminate CORS issues and maximize performance.
+    """
+    if z < 0 or z > 16 or x < 0 or y < 0:
+        raise HTTPException(status_code=400, detail="Invalid tile coordinates")
+
+    tile_path = TERRARIUM_CACHE_DIR / f"{z}_{x}_{y}.png"
+    if tile_path.exists():
+        return FileResponse(
+            str(tile_path),
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=604800, immutable"},
+        )
+
+    upstream_url = f"https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
+    try:
+        async with httpx.AsyncClient(timeout=8.0, headers={"User-Agent": "AT-F3001C-Sim/1.0"}) as client:
+            resp = await client.get(upstream_url)
+            if resp.status_code == 200:
+                try:
+                    tile_path.write_bytes(resp.content)
+                except Exception as write_err:
+                    logger.warning("Failed to cache elevation tile: %s", write_err)
+                return Response(
+                    content=resp.content,
+                    media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=604800, immutable"},
+                )
+            else:
+                raise HTTPException(status_code=resp.status_code, detail="Tile not found on elevation server")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("Terrarium tile proxy fetch error: %s", e)
+        raise HTTPException(status_code=502, detail=f"Failed to fetch elevation tile: {e}")
 
 
 @app.websocket("/ws/telemetry")
