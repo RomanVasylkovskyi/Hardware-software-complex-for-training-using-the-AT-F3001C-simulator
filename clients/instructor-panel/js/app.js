@@ -213,7 +213,7 @@ class InstructorPanelApp {
   }
 
   setView(viewName) {
-    const validViews = ['all', 'pfd', 'nd', 'standby', 'engine', 'safety', 'settings'];
+    const validViews = ['all', 'pfd', 'nd', 'standby', 'engine', 'settings'];
     if (!validViews.includes(viewName)) viewName = 'all';
 
     this.activeView = viewName;
@@ -278,7 +278,7 @@ class InstructorPanelApp {
       if (viewName === 'engine' || viewName === 'all') {
         this.engine.update(this.lastPayload.telemetry, isTelemetryOnline);
       }
-      if (viewName === 'safety' || viewName === 'all') {
+      if (viewName === 'all') {
         this.updateVisionHUD(this.lastPayload.vision, isVisionOnline);
       }
     }
@@ -443,8 +443,6 @@ class InstructorPanelApp {
       if (this.standby) this.standby.update(payload.telemetry, isTelemetryOnline);
     } else if (active === 'engine') {
       this.engine.update(payload.telemetry, isTelemetryOnline);
-    } else if (active === 'safety') {
-      this.updateVisionHUD(payload.vision, isVisionOnline);
     }
   }
 
