@@ -56,15 +56,6 @@ class TelemetrySettingsManager {
       btnRefreshFiles.addEventListener('click', () => this.fetchServerFiles());
     }
 
-    // Speed selector for server file
-    document.querySelectorAll('#server-speed-group .btn-speed').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('#server-speed-group .btn-speed').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.serverSpeed = parseFloat(btn.dataset.speed) || 1.0;
-      });
-    });
-
     const serverLoopChk = document.getElementById('server-loop-chk');
     if (serverLoopChk) {
       serverLoopChk.addEventListener('change', (e) => {
@@ -120,15 +111,6 @@ class TelemetrySettingsManager {
         this.clearSelectedLocalFile();
       });
     }
-
-    // Speed selector for local file
-    document.querySelectorAll('#local-speed-group .btn-speed').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('#local-speed-group .btn-speed').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.localSpeed = parseFloat(btn.dataset.speed) || 1.0;
-      });
-    });
 
     const localLoopChk = document.getElementById('local-loop-chk');
     if (localLoopChk) {
@@ -412,7 +394,7 @@ class TelemetrySettingsManager {
     }
     if (serverState) {
       if (this.isReplayRunning && !isLocal) {
-        serverState.innerText = `СТАТУС: ВІДТВОРЕННЯ (${data.speed || 1}x, ${data.loop ? 'LOOP' : 'ONCE'})`;
+        serverState.innerText = `СТАТУС: ВІДТВОРЕННЯ (${data.loop ? 'LOOP' : 'ONCE'})`;
         serverState.style.color = 'var(--avionics-cyan)';
       } else if (this.isReplayRunning && isLocal) {
         serverState.innerText = 'НЕАКТИВНИЙ (ПРАЦЮЄ ЛОКАЛЬНИЙ РЕПЛЕЙ)';
@@ -440,7 +422,7 @@ class TelemetrySettingsManager {
     }
     if (localState) {
       if (this.isReplayRunning && isLocal) {
-        localState.innerText = `СТАТУС: ВІДТВОРЕННЯ (${data.speed || 1}x, ${data.loop ? 'LOOP' : 'ONCE'})`;
+        localState.innerText = `СТАТУС: ВІДТВОРЕННЯ (${data.loop ? 'LOOP' : 'ONCE'})`;
         localState.style.color = 'var(--avionics-cyan)';
       } else if (this.isReplayRunning && !isLocal) {
         localState.innerText = 'НЕАКТИВНИЙ (ПРАЦЮЄ РЕПЛЕЙ З СЕРВЕРА)';
