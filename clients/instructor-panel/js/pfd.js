@@ -40,6 +40,9 @@ class PrimaryFlightDisplay {
     this.targetSpeed = null;
     this.fdPitch = null;
     this.fdRoll = null;
+
+    // Altimeter Barometric Pressure Setting (inHg)
+    this.baroSetting = 29.92;
     
     // Resize handling with high-DPI scaling
     this.resize();
@@ -104,6 +107,12 @@ class PrimaryFlightDisplay {
       this.targetSpeed = this.telemetry.target_speed_kt ?? ap.target_speed_kt ?? null;
       this.fdPitch = this.telemetry.fd_pitch_deg ?? ap.fd_pitch_deg ?? null;
       this.fdRoll = this.telemetry.fd_roll_deg ?? ap.fd_roll_deg ?? null;
+
+      // Barometric Pressure setting (inHg, e.g. 28.70, 29.92)
+      const baro = this.telemetry.barometer_setting_inhg ?? (this.telemetry.position ? this.telemetry.position.barometer_setting_inhg : null);
+      if (baro !== null && baro !== undefined && !isNaN(baro)) {
+        this.baroSetting = Number(baro);
+      }
     } else {
       this.apEngaged = false;
       this.fdActive = false;
@@ -117,6 +126,7 @@ class PrimaryFlightDisplay {
       this.targetSpeed = null;
       this.fdPitch = null;
       this.fdRoll = null;
+      this.baroSetting = 29.92;
     }
   }
 
@@ -171,9 +181,9 @@ class PrimaryFlightDisplay {
       this.drawFailBox(0, adiY, tapeWidth, adiH, 'IAS FAIL', false);
     }
 
-    // 3. Render Altitude Tape & VSI (Right)
+    // 3. Render Altitude Tape & VSI (Right) with Target Altitude & Baro Setting
     if (hasAltitude) {
-      this.drawAltitudeTape(w - tapeWidth, adiY, tapeWidth, adiH, this.altitude, hasVS ? this.verticalSpeed : null, this.targetAltitude);
+      this.drawAltitudeTape(w - tapeWidth, adiY, tapeWidth, adiH, this.altitude, hasVS ? this.verticalSpeed : null, this.targetAltitude, this.baroSetting);
     } else {
       this.drawFailBox(w - tapeWidth, adiY, tapeWidth, adiH, 'ALT FAIL', false);
     }
@@ -535,9 +545,9 @@ class PrimaryFlightDisplay {
   }
 
   /**
-   * Draw Moving Altitude Tape, Vertical Speed Indicator, and Target Altitude Bug
+   * Draw Moving Altitude Tape, Vertical Speed Indicator, Target Altitude Bug, and Baro Box
    */
-  drawAltitudeTape(x, y, w, h, altitude, vs, targetAltitude = null) {
+  drawAltitudeTape(x, y, w, h, altitude, vs, targetAltitude = null, baroSetting = 29.92) {
     const ctx = this.ctx;
     ctx.save();
 
@@ -568,6 +578,9 @@ class PrimaryFlightDisplay {
 
     for (let a = minAlt; a <= maxAlt; a += 20) {
       const ay = cy - (a - altitude) * pxPerFoot;
+      // Do not draw ticks into the top or bottom annunciator window areas
+      if (ay > y + h - 28 || ay < y + 25) continue;
+
       const isMajor = a % 100 === 0;
       const isHalf = a % 50 === 0;
       const tickLen = isMajor ? 12 : (isHalf ? 8 : 5);
@@ -647,11 +660,30 @@ class PrimaryFlightDisplay {
       ctx.fillText('ALT', x + w - 6, y + 14);
     }
 
-    // Baro setting
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = '9px monospace';
+    // Bottom Barometric Pressure Setting Window (Garmin G1000 authentic cyan box)
+    const baroH = 22;
+    const baroW = w - 4;
+    const baroX = x + 2;
+    const baroY = y + h - baroH - 2;
+
+    // Solid black background to completely mask ticks & tape
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(baroX, baroY, baroW, baroH);
+
+    // Crisp light grey / white border (matches G1000 screenshot exactly)
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(baroX, baroY, baroW, baroH);
+
+    // Formatted baro setting (e.g. 28.70 IN)
+    const baroNum = (typeof baroSetting === 'number' && !isNaN(baroSetting) && baroSetting > 0) ? baroSetting : 29.92;
+    const baroText = `${baroNum.toFixed(2)} IN`;
+
+    ctx.fillStyle = '#00f0ff'; // Bright Garmin cyan
+    ctx.font = 'bold 12px "Consolas", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('29.92 IN', x + w / 2, y + h - 8);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(baroText, baroX + baroW / 2, baroY + baroH / 2);
 
     // Vertical Speed Indicator (Right edge needle)
     if (vs !== null && vs !== undefined) {

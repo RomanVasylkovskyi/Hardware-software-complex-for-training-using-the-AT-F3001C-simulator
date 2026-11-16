@@ -332,12 +332,28 @@ class TelemetryParser:
             last_update=now_dt if ch17_quality == ChannelQuality.GOOD else None,
         )
 
-        # ----------------- Channel 20: Position -----------------
+        # ----------------- Channel 20 & 7: Position & Barometer -----------------
         ch20_quality = self._determine_channel_quality(20, now)
         ch20 = self._raw_channels.get(20, [None] * 8)
         on_runway_val: Optional[bool] = None
         if len(ch20) > 4 and ch20[4] is not None:
             on_runway_val = bool(round(ch20[4]))
+
+        # Altimeter Barometric Pressure Setting (X-Plane Channel 7 index 0: baro-pilot inHg)
+        ch7 = self._raw_channels.get(7, [None] * 8)
+        ch6 = self._raw_channels.get(6, [None] * 8)
+        ch5 = self._raw_channels.get(5, [None] * 8)
+        baro_inhg_val: Optional[float] = None
+        if len(ch7) > 0 and ch7[0] is not None and 20.0 <= ch7[0] <= 35.0:
+            baro_inhg_val = round(float(ch7[0]), 2)
+        elif len(ch6) > 0 and ch6[0] is not None and 20.0 <= ch6[0] <= 35.0:
+            baro_inhg_val = round(float(ch6[0]), 2)
+        elif len(ch5) > 0 and ch5[0] is not None and 20.0 <= ch5[0] <= 35.0:
+            baro_inhg_val = round(float(ch5[0]), 2)
+
+        baro_hpa_val: Optional[float] = None
+        if baro_inhg_val is not None:
+            baro_hpa_val = round(baro_inhg_val * 33.86389, 1)
 
         position = Position(
             latitude=ch20[0] if len(ch20) > 0 else None,
@@ -346,6 +362,8 @@ class TelemetryParser:
             altitude_agl_ft=ch20[3] if len(ch20) > 3 else None,
             on_runway=on_runway_val,
             altitude_ind_ft=ch20[5] if len(ch20) > 5 else None,
+            barometer_setting_inhg=baro_inhg_val,
+            barometer_setting_hpa=baro_hpa_val,
             quality=ch20_quality,
             last_update=now_dt if ch20_quality == ChannelQuality.GOOD else None,
         )

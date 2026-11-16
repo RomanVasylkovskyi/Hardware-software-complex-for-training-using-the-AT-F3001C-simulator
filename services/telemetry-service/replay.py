@@ -281,6 +281,15 @@ def pack_real_row_to_xplane_udp(row: Dict[str, Optional[float]]) -> bytes:
         XPLANE_NULL, XPLANE_NULL
     )
 
+    # 20. Channel 7: System Pressures / Altimeter Barometer Setting (baro-pilot inHg)
+    baro_val = sanitize(row.get("barometer_setting_inhg", 28.70))
+    ch7 = struct.pack(
+        "<i8f",
+        7,
+        baro_val, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL,
+        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
+    )
+
     return (
         XPLANE_HEADER
         + ch0
@@ -302,6 +311,7 @@ def pack_real_row_to_xplane_udp(row: Dict[str, Optional[float]]) -> bytes:
         + ch117
         + ch118
         + ch119
+        + ch7
     )
 
 

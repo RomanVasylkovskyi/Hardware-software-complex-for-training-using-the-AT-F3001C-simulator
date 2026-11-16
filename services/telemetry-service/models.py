@@ -62,6 +62,8 @@ class Position(BaseModel):
     altitude_agl_ft: Optional[float] = Field(None, description="Altitude Above Ground Level in feet")
     on_runway: Optional[bool] = Field(None, description="True if aircraft wheels are on runway surface")
     altitude_ind_ft: Optional[float] = Field(None, description="Indicated altitude in feet")
+    barometer_setting_inhg: Optional[float] = Field(None, description="Altimeter barometric pressure setting in inHg (e.g. 29.92, 28.70)")
+    barometer_setting_hpa: Optional[float] = Field(None, description="Altimeter barometric pressure setting in hPa / mbar")
     quality: ChannelQuality = Field(ChannelQuality.NO_SIGNAL, description="Subsystem data quality")
     last_update: Optional[datetime] = Field(None, description="UTC timestamp of last update")
 
