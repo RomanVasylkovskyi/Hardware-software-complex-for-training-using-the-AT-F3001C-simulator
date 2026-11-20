@@ -42,8 +42,8 @@ class PrimaryFlightDisplay {
     this.fdPitch = null;
     this.fdRoll = null;
 
-    // Altimeter Barometric Pressure Setting (inHg)
-    this.baroSetting = 29.92;
+    // Altimeter Barometric Pressure Setting (inHg); null until the simulator reports it
+    this.baroSetting = null;
     
     // Resize handling with high-DPI scaling
     this.resize();
@@ -115,15 +115,13 @@ class PrimaryFlightDisplay {
       this.fdRoll = this.telemetry.fd_roll_deg ?? ap.fd_roll_deg ?? null;
 
       // Waypoint / GPS guidance for top navigation bar
-      this.navId = this.telemetry.nav_id ?? ap.nav_id ?? 'UKLL';
+      this.navId = this.telemetry.nav_id ?? ap.nav_id ?? null;
       this.navDistance = (typeof this.telemetry.nav_distance_nm === 'number') ? this.telemetry.nav_distance_nm : (typeof ap.nav_distance_nm === 'number' ? ap.nav_distance_nm : null);
       this.navBearing = (typeof this.telemetry.nav_bearing_deg === 'number') ? this.telemetry.nav_bearing_deg : (typeof ap.nav_bearing_deg === 'number' ? ap.nav_bearing_deg : null);
 
       // Barometric Pressure setting (inHg, e.g. 28.70, 29.92)
       const baro = this.telemetry.barometer_setting_inhg ?? (this.telemetry.position ? this.telemetry.position.barometer_setting_inhg : null);
-      if (baro !== null && baro !== undefined && !isNaN(baro)) {
-        this.baroSetting = Number(baro);
-      }
+      this.baroSetting = (baro !== null && baro !== undefined && !isNaN(baro)) ? Number(baro) : null;
     } else {
       this.apEngaged = false;
       this.fdActive = false;
@@ -138,10 +136,10 @@ class PrimaryFlightDisplay {
       this.targetVvi = null;
       this.fdPitch = null;
       this.fdRoll = null;
-      this.navId = 'UKLL';
+      this.navId = null;
       this.navDistance = null;
       this.navBearing = null;
-      this.baroSetting = 29.92;
+      this.baroSetting = null;
     }
   }
 
@@ -572,7 +570,7 @@ class PrimaryFlightDisplay {
   /**
    * Draw Moving Altitude Tape, Vertical Speed Indicator, Target Altitude Bug, and Baro Box
    */
-  drawAltitudeTape(x, y, w, h, altitude, vs, targetAltitude = null, baroSetting = 29.92, targetVvi = null) {
+  drawAltitudeTape(x, y, w, h, altitude, vs, targetAltitude = null, baroSetting = null, targetVvi = null) {
     const ctx = this.ctx;
     ctx.save();
 
@@ -756,8 +754,8 @@ class PrimaryFlightDisplay {
     ctx.strokeRect(baroX, baroY, baroW, baroH);
 
     // Formatted baro setting (e.g. 29.06 IN)
-    const baroNum = (typeof baroSetting === 'number' && !isNaN(baroSetting) && baroSetting > 0) ? baroSetting : 29.92;
-    const baroText = `${baroNum.toFixed(2)} IN`;
+    const baroKnown = typeof baroSetting === 'number' && !isNaN(baroSetting) && baroSetting > 0;
+    const baroText = baroKnown ? `${baroSetting.toFixed(2)} IN` : '--.-- IN';
 
     ctx.fillStyle = '#00f0ff'; // Bright Garmin cyan
     ctx.font = 'bold 12px "Consolas", monospace';
@@ -1071,16 +1069,10 @@ class PrimaryFlightDisplay {
     const row1H = midY - y;
     const row1CenterY = y + row1H / 2;
 
-    // Optional radios on far left and right edges
+    // NAV/COM frequencies are not part of the telemetry stream, so none are drawn
+    // (previously fixed strings "NAV1 108.95" / "121.800 COM1" were shown as if live).
     ctx.font = 'bold 10px "Consolas", monospace';
     ctx.textBaseline = 'middle';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#64748b';
-    ctx.fillText('NAV1 108.95', x + 8, row1CenterY);
-
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#22c55e';
-    ctx.fillText('121.800 COM1', x + w - 8, row1CenterY);
 
     // Center Waypoint Box
     const wpBoxW = Math.min(320, w * 0.60);
@@ -1116,7 +1108,7 @@ class PrimaryFlightDisplay {
     ctx.stroke();
 
     // Waypoint Ident (e.g. UKLL)
-    const ident = this.navId || 'UKLL';
+    const ident = this.navId || '----';
     ctx.font = 'bold 12px "Consolas", monospace';
     ctx.fillStyle = '#e879f9'; // Vibrant magenta
     ctx.textAlign = 'left';
@@ -1131,7 +1123,7 @@ class PrimaryFlightDisplay {
     ctx.stroke();
 
     // DIS (Distance)
-    const distVal = (this.navDistance !== null && this.navDistance !== undefined) ? this.navDistance.toFixed(1) : '4.7';
+    const distVal = (this.navDistance !== null && this.navDistance !== undefined) ? this.navDistance.toFixed(1) : '--.-';
     ctx.font = 'bold 10px sans-serif';
     ctx.fillStyle = '#94a3b8';
     ctx.fillText('DIS', div1X + 8, iconY);
@@ -1139,10 +1131,12 @@ class PrimaryFlightDisplay {
     ctx.font = 'bold 12px "Consolas", monospace';
     ctx.fillStyle = '#e879f9';
     ctx.fillText(distVal, div1X + 32, iconY);
+    // Measure with the value's own font; measuring after switching to 9px made "NM" overlap the digits
+    const distWidth = ctx.measureText(distVal).width;
 
     ctx.font = 'bold 9px sans-serif';
     ctx.fillStyle = '#94a3b8';
-    ctx.fillText('NM', div1X + 32 + ctx.measureText(distVal).width + 3, iconY);
+    ctx.fillText('NM', div1X + 32 + distWidth + 3, iconY);
 
     // Divider 2
     const div2X = wpBoxX + wpBoxW * 0.70;
@@ -1153,7 +1147,7 @@ class PrimaryFlightDisplay {
     ctx.stroke();
 
     // BRG (Bearing)
-    const brgVal = (this.navBearing !== null && this.navBearing !== undefined) ? `${Math.round(this.navBearing)}°` : '137°';
+    const brgVal = (this.navBearing !== null && this.navBearing !== undefined) ? `${Math.round(this.navBearing)}°` : '---°';
     ctx.font = 'bold 10px sans-serif';
     ctx.fillStyle = '#94a3b8';
     ctx.fillText('BRG', div2X + 8, iconY);
@@ -1217,9 +1211,9 @@ class PrimaryFlightDisplay {
 
     // CELL 3: Vertical Mode
     if (this.altitudeMode) {
-      const altNum = (this.targetAltitude !== null && this.targetAltitude !== undefined) ? Math.round(this.targetAltitude) : (this.altitude ? Math.round(this.altitude) : 3000);
+      const hasTarget = this.targetAltitude !== null && this.targetAltitude !== undefined;
       ctx.fillStyle = '#22c55e';
-      ctx.fillText(`ALT ${altNum} FT`, afcsX + cellW * 2 + cellW / 2, row2CenterY);
+      ctx.fillText(hasTarget ? `ALT ${Math.round(this.targetAltitude)} FT` : 'ALT', afcsX + cellW * 2 + cellW / 2, row2CenterY);
     } else if (this.targetVvi !== null && this.targetVvi !== undefined && Math.abs(this.targetVvi) > 0) {
       const vvi = Math.round(this.targetVvi);
       ctx.fillStyle = '#22c55e';

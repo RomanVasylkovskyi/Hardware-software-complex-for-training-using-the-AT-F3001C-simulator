@@ -6,7 +6,7 @@
   <title>AT-F3001C Simulator | Instructor Operating Station (IOS)</title>
   
   <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css?v=3" />
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
   
   <!-- Custom Avionics CSS -->
   <link rel="stylesheet" href="css/main.css?v=35" />
@@ -40,6 +40,20 @@
       </button>
     </div>
 
+    <!-- Annunciator strip (active warnings) + link / service health. Lives in the header so
+         alerts never cover instrument tapes or map controls. -->
+    <div class="hdr-center">
+      <div id="hud-alerts-column" class="hud-alerts-column" role="region" aria-label="Flight Safety Alerts" aria-live="assertive"></div>
+      <div class="hdr-health" aria-label="Стан з'єднання та сервісів">
+        <span id="approach-status-badge" class="status-pill status-neutral hdr-approach hidden">APR</span>
+        <span id="conn-status-badge" class="hdr-conn" title="З'єднання панелі з сервером">CONNECTING</span>
+        <span id="stat-latency-val" class="hdr-metric" title="Затримка до сервера (RTT/2)">-- ms</span>
+        <span id="stat-hz-val" class="hdr-metric" title="Частота оновлення панелі">-- Hz</span>
+        <span id="pill-telemetry" class="service-pill offline" title="Телеметрія: OFFLINE">TLM</span>
+        <span id="pill-analytics" class="service-pill offline" title="Аналітика: OFFLINE">ANL</span>
+      </div>
+    </div>
+
     <!-- Central Unified Section Tabs (Aeronautical Softkeys, Strict Engineering Style) -->
     <nav class="nav-section-tabs" id="nav-section-tabs" aria-label="Розділи комплексу">
       <button class="nav-tab-btn active" data-view="all" title="Комплексний огляд (всі 4 панелі)">ГОЛОВНА</button>
@@ -50,11 +64,6 @@
       <button class="nav-tab-btn" data-view="settings" id="btn-tab-settings" title="Налаштування джерела даних та реплею">НАЛАШТУВАННЯ</button>
     </nav>
   </header>
-
-  <!-- Floating Toast Notifications Column (Pinned to Top-Right Corner) -->
-  <div id="hud-alerts-column" class="hud-alerts-column" role="region" aria-label="Flight Safety Alerts">
-    <!-- Active error/warning badges dynamically inserted here as vertical stack -->
-  </div>
 
   <!-- MAIN DASHBOARD GRID -->
   <main class="dashboard-grid">
@@ -475,7 +484,31 @@
   </main>
 
   <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js?v=3"></script>
+  <!-- LANDING REPORT (filled from analytics-service after a detected touchdown) -->
+  <div id="landing-report-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="rpt-title">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title" id="rpt-title">ОЦІНКА ПОСАДКИ</span>
+        <button id="btn-close-report-x" class="modal-close-btn" title="Закрити" aria-label="Закрити">&times;</button>
+      </div>
+      <div class="modal-score-box">
+        <span class="score-number" id="rpt-score-val">--</span>
+        <span class="score-grade" id="rpt-grade-val">--</span>
+      </div>
+      <div class="modal-metrics-grid">
+        <div class="metric-item"><span>Верт. швидкість</span><span id="rpt-vs-val">--</span></div>
+        <div class="metric-item"><span>Перевантаження</span><span id="rpt-g-val">--</span></div>
+        <div class="metric-item"><span>Від осі ЗПС</span><span id="rpt-cl-val">--</span></div>
+        <div class="metric-item"><span>Крен</span><span id="rpt-roll-val">--</span></div>
+      </div>
+      <div class="modal-footer">
+        <span class="rpt-meta" id="rpt-meta-val"></span>
+        <button id="btn-close-report" class="btn-primary">ЗАКРИТИ</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
 
   <!-- Avionics Modular Scripts -->
   <script src="js/audio.js?v=34"></script>

@@ -622,9 +622,9 @@ class StandbyAltimeterGauge {
     this.render();
   }
 
-  update(altitude, baroSetting = 29.92, isOnline = true) {
+  update(altitude, baroSetting = null, isOnline = true) {
     this.altitude = altitude;
-    this.baroSetting = (typeof baroSetting === 'number' && !isNaN(baroSetting) && baroSetting > 0) ? baroSetting : 29.92;
+    this.baroSetting = (typeof baroSetting === 'number' && !isNaN(baroSetting) && baroSetting > 0) ? baroSetting : null;
     this.isOnline = isOnline;
     this.render();
   }
@@ -752,15 +752,14 @@ class StandbyAltimeterGauge {
     ctx.lineWidth = 1.5;
     ctx.strokeRect(x - kw / 2, y - kh / 2, kw, kh);
 
-    const baro = this.baroSetting || 29.92;
-    const hpa = Math.round(baro * 33.86389);
+    const baro = this.baroSetting;
     ctx.fillStyle = '#38bdf8';
     ctx.font = 'bold 9px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(`${hpa}`, x, y - 1);
+    ctx.fillText(baro ? `${Math.round(baro * 33.86389)}` : '----', x, y - 1);
     ctx.fillStyle = '#cbd5e1';
     ctx.font = '8px monospace';
-    ctx.fillText(baro.toFixed(2), x, y + 8);
+    ctx.fillText(baro ? baro.toFixed(2) : '--.--', x, y + 8);
     ctx.restore();
   }
 
@@ -1757,7 +1756,7 @@ class StandbyInstrumentsCluster {
     const pitch = telemetry.pitch_deg ?? telemetry.attitude?.pitch_deg;
     const roll = telemetry.roll_deg ?? telemetry.attitude?.roll_deg;
     const alt = telemetry.altitude_ind_ft ?? telemetry.position?.altitude_ind_ft ?? telemetry.altitude_msl_ft ?? telemetry.altitude_ft;
-    const baro = telemetry.barometer_setting_inhg ?? telemetry.position?.barometer_setting_inhg ?? 29.92;
+    const baro = telemetry.barometer_setting_inhg ?? telemetry.position?.barometer_setting_inhg ?? null;
     const slip = telemetry.sideslip_beta_deg ?? (telemetry.g_load_side ? telemetry.g_load_side * 5.0 : 0);
     const hdg = telemetry.heading_mag_deg ?? telemetry.heading_true_deg ?? telemetry.attitude?.heading_mag_deg ?? telemetry.attitude?.heading_true_deg;
     const vsi = telemetry.vertical_speed_fpm ?? telemetry.vertical_speed ?? telemetry.speeds?.vertical_speed_fpm;

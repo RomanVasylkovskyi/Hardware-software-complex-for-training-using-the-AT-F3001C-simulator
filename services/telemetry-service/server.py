@@ -111,7 +111,9 @@ class TelemetryUDPProtocol(asyncio.DatagramProtocol):
 
         snapshot, err = self.parser.process_packet(data)
         if err:
-            logger.warning(f"UDP packet parse error from {addr}: {err}")
+            logger.warning("UDP packet parse error from %s: %s", addr, err)
+        else:
+            packet_event.set()
 
     def error_received(self, exc: Exception) -> None:
         logger.error(f"UDP socket error received: {exc}")
@@ -129,8 +131,58 @@ telemetry_parser = TelemetryParser(
     offline_timeout_sec=settings.simulator_offline_timeout_sec,
     expected_interval_sec=settings.expected_packet_interval_sec,
 )
+telemetry_parser.airport_icao = settings.airport_icao
 ws_manager = WebSocketManager()
+# Set on every successfully parsed packet so the broadcast loop pushes it immediately
+# instead of waiting for the next polling tick (keeps end-to-end latency low).
+packet_event = asyncio.Event()
 replayer: Optional[FlightDataReplayer] = None
+
+# Fields that are never needed by downstream consumers; excluded from the WebSocket stream.
+WS_EXCLUDE_FIELDS = {"raw_channels"}
+
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024
+SERVICE_DIR = Path(__file__).resolve().parent
+UPLOAD_DIR_CANDIDATES = (Path("/app/uploads"), Path("/tmp/uploads"))
+
+
+def recording_search_dirs() -> List[tuple]:
+    """Directories that may hold flight recordings: (path, source, description prefix)."""
+    return [
+        (Path("/app/data"), "server", "Сервер симулятора"),
+        (Path("/app/uploads"), "uploaded", "Завантажено користувачем"),
+        (Path("/tmp/uploads"), "uploaded", "Завантажено користувачем"),
+        (SERVICE_DIR.parent.parent / "data", "server", "Дані комплексу"),
+        (SERVICE_DIR / "data", "server", "Локальні дані"),
+    ]
+
+
+def resolve_recording(requested: str) -> Path:
+    """
+    Resolve a client-supplied recording name to a file inside the allowed recording
+    directories. Only the file name is honoured, so "../../etc/passwd" cannot escape.
+    """
+    name = Path(requested).name
+    if not name or Path(name).suffix.lower() not in (".csv", ".txt"):
+        raise HTTPException(status_code=400, detail="Only .csv and .txt flight recordings are supported")
+    for directory, _, _ in recording_search_dirs():
+        candidate = directory / name
+        if candidate.is_file():
+            return candidate.resolve()
+    raise HTTPException(status_code=404, detail=f"Flight recording '{name}' not found")
+
+
+def ingest_replay_packet(packet: bytes) -> None:
+    """Direct replay path: parse the datagram and wake the broadcast loop."""
+    _, err = telemetry_parser.process_packet(packet)
+    if err:
+        logger.warning("Replay packet rejected by parser: %s", err)
+        return
+    packet_event.set()
+
+
+def snapshot_for_stream() -> dict:
+    return telemetry_parser.check_staleness().model_dump(mode="json", exclude=WS_EXCLUDE_FIELDS)
 udp_transport: Optional[asyncio.DatagramTransport] = None
 watchdog_task: Optional[asyncio.Task] = None
 broadcast_task: Optional[asyncio.Task] = None
@@ -160,17 +212,33 @@ async def watchdog_loop() -> None:
 
 async def broadcast_loop() -> None:
     """
-    Periodic WebSocket broadcast loop.
-    Ensures connected clients receive live telemetry stream at steady rate.
+    WebSocket broadcast loop.
+    Pushes a snapshot as soon as a packet arrives (rate-capped at ws_broadcast_rate_hz) and
+    sends a heartbeat snapshot at least every heartbeat interval, so staleness/offline
+    transitions still reach clients when the simulator stops sending.
     """
-    logger.info(f"Telemetry WebSocket broadcast loop started at {settings.ws_broadcast_rate_hz} Hz.")
-    interval = 1.0 / max(1.0, settings.ws_broadcast_rate_hz)
+    min_interval = 1.0 / max(1.0, settings.ws_broadcast_rate_hz)
+    heartbeat = max(min_interval, settings.ws_heartbeat_interval_sec)
+    logger.info(
+        "Telemetry WebSocket broadcast loop started (max %.0f Hz, heartbeat %.2fs).",
+        settings.ws_broadcast_rate_hz, heartbeat,
+    )
+    loop = asyncio.get_running_loop()
+    last_sent = 0.0
     try:
         while True:
-            snapshot = telemetry_parser.check_staleness()
-            snapshot_dict = snapshot.model_dump(mode="json")
-            await ws_manager.broadcast_json(snapshot_dict)
-            await asyncio.sleep(interval)
+            try:
+                await asyncio.wait_for(packet_event.wait(), timeout=heartbeat)
+            except asyncio.TimeoutError:
+                pass
+            packet_event.clear()
+
+            wait = min_interval - (loop.time() - last_sent)
+            if wait > 0:
+                await asyncio.sleep(wait)
+
+            await ws_manager.broadcast_json(snapshot_for_stream())
+            last_sent = loop.time()
     except asyncio.CancelledError:
         logger.info("Telemetry WebSocket broadcast loop stopped.")
 
@@ -216,7 +284,7 @@ async def lifespan(app: FastAPI):
         try:
             # We pass direct callback to avoid loopback socket restrictions in isolated environments
             await replayer.start(
-                direct_callback=lambda pkt: telemetry_parser.process_packet(pkt)
+                direct_callback=ingest_replay_packet
             )
         except Exception as e:
             logger.error(f"Failed to start automatic replay: {e}")
@@ -323,14 +391,7 @@ async def list_replay_files() -> dict:
     files_list = []
     seen_names = set()
 
-    search_dirs = [
-        (Path("/app/data"), "server", "Сервер симулятора"),
-        (Path("/app/uploads"), "uploaded", "Завантажено користувачем"),
-        (Path(__file__).resolve().parent.parent.parent / "data", "server", "Дані комплексу"),
-        (Path(__file__).resolve().parent / "data", "server", "Локальні дані"),
-    ]
-
-    for search_dir, source, desc_prefix in search_dirs:
+    for search_dir, source, desc_prefix in recording_search_dirs():
         if not search_dir.is_dir():
             continue
         try:
@@ -371,7 +432,7 @@ async def start_replay(req: Optional[ReplayControlRequest] = None) -> dict:
     Never uses fake data; loads verified flight recordings.
     """
     global replayer
-    req_file = req.file_path if (req and req.file_path) else None
+    req_file = str(resolve_recording(req.file_path)) if (req and req.file_path) else None
     speed = req.speed if (req and req.speed) else 1.0
     loop = req.loop if (req and req.loop is not None) else True
 
@@ -392,7 +453,7 @@ async def start_replay(req: Optional[ReplayControlRequest] = None) -> dict:
         telemetry_parser.replay_mode = True
         telemetry_parser.reset()
         await replayer.start(
-            direct_callback=lambda pkt: telemetry_parser.process_packet(pkt)
+            direct_callback=ingest_replay_packet
         )
         return {
             "status": "started",
@@ -453,24 +514,45 @@ async def upload_flight_file(
     if ext not in (".csv", ".txt"):
         raise HTTPException(status_code=400, detail="Only .csv and .txt flight recordings are supported")
 
-    upload_dir = Path("/app/uploads")
-    try:
-        upload_dir.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        upload_dir = Path("/tmp/uploads")
-        upload_dir.mkdir(parents=True, exist_ok=True)
+    upload_dir: Optional[Path] = None
+    for candidate in UPLOAD_DIR_CANDIDATES:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            upload_dir = candidate
+            break
+        except OSError as e:
+            logger.warning("Upload directory %s unavailable: %s", candidate, e)
+    if upload_dir is None:
+        raise HTTPException(status_code=500, detail="No writable upload directory")
 
-    safe_name = "".join(c for c in file.filename if c.isalnum() or c in "._- ")
+    safe_name = Path("".join(c for c in Path(file.filename).name if c.isalnum() or c in "._- ")).name
+    if not safe_name or safe_name.startswith("."):
+        raise HTTPException(status_code=400, detail="Invalid file name")
     dest_path = upload_dir / safe_name
+    tmp_path = upload_dir / f".{safe_name}.part"
 
-    contents = await file.read()
-    if len(contents) == 0:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    size_b = 0
+    try:
+        with open(tmp_path, "wb") as out:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size_b += len(chunk)
+                if size_b > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File exceeds {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit",
+                    )
+                out.write(chunk)
+        if size_b == 0:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty")
+        tmp_path.replace(dest_path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
+    logger.info("Uploaded flight recording saved to %s (%d bytes)", dest_path, size_b)
 
-    dest_path.write_bytes(contents)
-    logger.info(f"Uploaded flight recording saved to {dest_path} ({len(contents)} bytes)")
-
-    size_b = len(contents)
     size_str = f"{size_b / (1024 * 1024):.1f} MB" if size_b >= 1024 * 1024 else f"{max(1, round(size_b / 1024))} KB"
 
     result = {
@@ -498,7 +580,7 @@ async def upload_flight_file(
             telemetry_parser.replay_mode = True
             telemetry_parser.reset()
             await replayer.start(
-                direct_callback=lambda pkt: telemetry_parser.process_packet(pkt)
+                direct_callback=ingest_replay_packet
             )
             result["replay_started"] = True
             result["total_records"] = replayer.total_records
@@ -521,8 +603,7 @@ async def websocket_telemetry_endpoint(websocket: WebSocket) -> None:
     await ws_manager.connect(websocket)
     try:
         # Send immediate initial snapshot
-        initial_snapshot = telemetry_parser.check_staleness()
-        await websocket.send_json(initial_snapshot.model_dump(mode="json"))
+        await websocket.send_json(snapshot_for_stream())
 
         # Keep receiving client heartbeats / control pings
         while True:

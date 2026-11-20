@@ -16,6 +16,7 @@ import logging
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # Ensure service directory is on sys.path
@@ -26,13 +27,11 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from flight_phase import FlightPhaseTracker, PhaseState, find_touchdowns, normalize_frame
 from landing_score import LandingScoreEvaluator
 from stabilized_approach import StabilizedApproachMonitor
 
-try:
-    from ai_warnings import FlightWarningsGenerator
-except ImportError:
-    from warnings import FlightWarningsGenerator
+from ai_warnings import FlightWarningsGenerator
 
 logger = logging.getLogger("analytics_service")
 logging.basicConfig(level=logging.INFO)
@@ -81,6 +80,71 @@ landing_evaluator = LandingScoreEvaluator(
 warnings_generator = FlightWarningsGenerator(
     default_target_ias_kt=float(os.getenv("TARGET_IAS_KT", 65.0)),
 )
+# Stabilization gate: 1000 ft (IMC) by default, 500 ft when APPROACH_IS_VMC=true (VFR circuits).
+APPROACH_IS_VMC = os.getenv("APPROACH_IS_VMC", "false").strip().lower() in ("1", "true", "yes")
+
+# Server-side recordings that /analytics/session may read (by file name only).
+DATA_DIRS = (Path("/app/data"), Path(__file__).resolve().parent.parent.parent / "data")
+
+
+def resolve_data_file(requested: str) -> Path:
+    name = Path(requested).name
+    if not name.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only .csv telemetry files are supported")
+    for directory in DATA_DIRS:
+        candidate = directory / name
+        if candidate.is_file():
+            return candidate
+    raise HTTPException(status_code=404, detail=f"Telemetry CSV file not found: {name}")
+
+
+def evaluate_with_phase(
+    telemetry: Dict[str, Any],
+    state: PhaseState,
+    target_ias_kt: Optional[float] = None,
+    is_vmc: Optional[bool] = None,
+) -> Dict[str, Any]:
+    """Evaluate one frame given the tracker state for that frame."""
+    vmc = APPROACH_IS_VMC if is_vmc is None else is_vmc
+    phase_info = {
+        "phase": state.phase.value,
+        "is_airborne": state.is_airborne,
+        "on_approach": state.on_approach,
+    }
+
+    if state.on_approach:
+        stability = approach_monitor.evaluate_frame(telemetry, target_ias_kt=target_ias_kt, is_vmc=vmc)
+        if stability.get("is_below_gate") is False:
+            stability["status"] = "MONITORING"
+    else:
+        stability = {
+            "status": "NOT_ON_APPROACH",
+            "evaluated": False,
+            "is_stabilized": None,
+            "phase": state.phase.value,
+        }
+
+    warnings = warnings_generator.evaluate_warnings(
+        telemetry,
+        target_ias_kt=target_ias_kt,
+        is_airborne=state.is_airborne,
+        on_approach=state.on_approach,
+    )
+
+    if state.touchdown is not None:
+        landing = landing_evaluator.evaluate_touchdown(state.touchdown.as_frame())
+        landing["touchdown_id"] = state.touchdown.touchdown_id
+        landing["detection_method"] = "AGL_CONTACT_WINDOW"
+    else:
+        landing = {"status": "NO_TOUCHDOWN_YET"}
+
+    return {
+        "timestamp": state.time_sec if state.time_sec is not None else time.time(),
+        "flight_phase": phase_info,
+        "stabilized_approach": stability,
+        "warnings": warnings,
+        "landing_score": landing,
+    }
 
 
 class TelemetryFrame(BaseModel):
@@ -109,7 +173,7 @@ class SessionEvaluationRequest(BaseModel):
     frames: Optional[List[Dict[str, Any]]] = Field(None, description="List of telemetry frames")
     csv_file_path: Optional[str] = Field(None, description="Optional path to server-side telemetry CSV file")
     target_ias_kt: Optional[float] = Field(None, description="Optional target IAS in knots")
-    is_vmc: Optional[bool] = Field(False, description="Whether visual meteorological conditions apply")
+    is_vmc: Optional[bool] = Field(None, description="Whether visual meteorological conditions apply (default: APPROACH_IS_VMC)")
 
 
 @app.get("/health")
@@ -138,22 +202,24 @@ async def evaluate_single_frame(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     2. Real-time warnings (SINK RATE, PULL UP, GLIDESLOPE, TOO HIGH SPEED, etc.)
     3. Landing score (evaluates touchdown if on runway, else NO_TOUCHDOWN_YET)
     """
+    telemetry = normalize_frame(telemetry)
     target_ias = telemetry.get("target_ias_kt")
-    is_vmc = bool(telemetry.get("is_vmc", False))
+    is_vmc = telemetry.get("is_vmc")
 
     stability_result = approach_monitor.evaluate_frame(
-        telemetry, target_ias_kt=target_ias, is_vmc=is_vmc
+        telemetry, target_ias_kt=target_ias, is_vmc=APPROACH_IS_VMC if is_vmc is None else bool(is_vmc)
     )
     warnings_result = warnings_generator.evaluate_warnings(
         telemetry, target_ias_kt=target_ias
     )
-    landing_result = landing_evaluator.evaluate_frame(telemetry)
 
     return {
         "timestamp": telemetry.get("time_sec", time.time()),
         "stabilized_approach": stability_result,
         "warnings": warnings_result,
-        "landing_score": landing_result,
+        # A touchdown can only be detected from a sequence of frames: use /analytics/session
+        # or the /ws/analytics stream.
+        "landing_score": {"status": "REQUIRES_FRAME_SEQUENCE"},
     }
 
 
@@ -167,24 +233,16 @@ async def evaluate_session(request: SessionEvaluationRequest) -> Dict[str, Any]:
     """
     frames: List[Dict[str, Any]] = []
 
-    # 1. Load from CSV if requested
+    # 1. Load frames (server-side CSV by file name, or posted frames)
     if request.csv_file_path:
-        if not os.path.exists(request.csv_file_path):
-            raise HTTPException(
-                status_code=404,
-                detail=f"Telemetry CSV file not found: {request.csv_file_path}",
-            )
+        csv_path = resolve_data_file(request.csv_file_path)
         try:
-            with open(request.csv_file_path, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                frames = [dict(row) for row in reader]
-        except Exception as e:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Failed to parse CSV file: {str(e)}",
-            )
+            with open(csv_path, "r", encoding="utf-8") as f:
+                frames = [normalize_frame(row) for row in csv.DictReader(f)]
+        except (OSError, csv.Error, UnicodeDecodeError) as e:
+            raise HTTPException(status_code=400, detail=f"Failed to parse CSV file: {e}")
     elif request.frames:
-        frames = request.frames
+        frames = [normalize_frame(frame) for frame in request.frames]
     else:
         raise HTTPException(
             status_code=400,
@@ -197,62 +255,70 @@ async def evaluate_session(request: SessionEvaluationRequest) -> Dict[str, Any]:
             "message": "No telemetry frames available for analysis",
         }
 
-    # 2. Evaluate touchdown score
-    landing_result = landing_evaluator.evaluate_flight_session(frames)
+    vmc = APPROACH_IS_VMC if request.is_vmc is None else bool(request.is_vmc)
 
-    # 3. Evaluate stabilized approach gates (1000 ft IMC and 500 ft VMC)
+    # 2. Touchdowns (all of them; the last one is the session's landing)
+    touchdowns = find_touchdowns(frames)
+    touchdown_results = []
+    for event in touchdowns:
+        result = landing_evaluator.evaluate_touchdown(event.as_frame())
+        result["touchdown_id"] = event.touchdown_id
+        touchdown_results.append(result)
+    landing_result = touchdown_results[-1] if touchdown_results else {"status": "NO_TOUCHDOWN_YET"}
+
+    # 3. Stabilization gates on the final approach: last descent through 1000 / 500 ft before the last touchdown
+    final_td_time = touchdowns[-1].time_sec if touchdowns else None
     gate_1000_frame = None
     gate_500_frame = None
-
+    prev_alt: Optional[float] = None
     for frame in frames:
-        alt_agl = frame.get("altitude_agl_ft")
-        if alt_agl is not None:
-            try:
-                alt = float(alt_agl)
-                if gate_1000_frame is None and alt <= 1000.0:
-                    gate_1000_frame = frame
-                if gate_500_frame is None and alt <= 500.0:
-                    gate_500_frame = frame
-            except (ValueError, TypeError):
-                continue
+        t = frame.get("time_sec")
+        if final_td_time is not None and isinstance(t, (int, float)) and t > final_td_time:
+            break
+        alt = frame.get("altitude_agl_ft")
+        if not isinstance(alt, (int, float)):
+            continue
+        if prev_alt is not None:
+            if prev_alt > 1000.0 >= alt:
+                gate_1000_frame = frame
+            if prev_alt > 500.0 >= alt:
+                gate_500_frame = frame
+        prev_alt = alt
 
     stability_at_1000ft = (
-        approach_monitor.evaluate_frame(
-            gate_1000_frame, target_ias_kt=request.target_ias_kt, is_vmc=False
-        )
+        approach_monitor.evaluate_frame(gate_1000_frame, target_ias_kt=request.target_ias_kt, is_vmc=False)
         if gate_1000_frame
         else {"status": "AIRCRAFT_DID_NOT_PASS_1000FT_GATE"}
     )
-
     stability_at_500ft = (
-        approach_monitor.evaluate_frame(
-            gate_500_frame, target_ias_kt=request.target_ias_kt, is_vmc=True
-        )
+        approach_monitor.evaluate_frame(gate_500_frame, target_ias_kt=request.target_ias_kt, is_vmc=True)
         if gate_500_frame
         else {"status": "AIRCRAFT_DID_NOT_PASS_500FT_GATE"}
     )
 
-    # 4. Warnings aggregation across session
+    # 4. Warnings across the session, gated by flight phase
+    tracker = FlightPhaseTracker()
     warning_timeline: List[Dict[str, Any]] = []
     warning_counts: Dict[str, int] = {}
-
     for frame in frames:
+        state = tracker.update(frame)
         res = warnings_generator.evaluate_warnings(
-            frame, target_ias_kt=request.target_ias_kt
+            frame,
+            target_ias_kt=request.target_ias_kt,
+            is_airborne=state.is_airborne,
+            on_approach=state.on_approach,
         )
         if res.get("active_warnings"):
-            t = frame.get("time_sec")
             for w in res["active_warnings"]:
                 warning_counts[w] = warning_counts.get(w, 0) + 1
-            warning_timeline.append({
-                "time_sec": t,
-                "warnings": res["active_warnings"],
-            })
+            warning_timeline.append({"time_sec": frame.get("time_sec"), "warnings": res["active_warnings"]})
 
     return {
         "status": "SESSION_EVALUATED",
         "total_data_points": len(frames),
         "landing_score": landing_result,
+        "touchdowns": touchdown_results,
+        "approach_gate_vmc": vmc,
         "stabilized_approach_gates": {
             "gate_1000ft_imc": stability_at_1000ft,
             "gate_500ft_vmc": stability_at_500ft,
@@ -260,7 +326,7 @@ async def evaluate_session(request: SessionEvaluationRequest) -> Dict[str, Any]:
         "warnings_summary": {
             "total_warning_events": len(warning_timeline),
             "counts_by_type": warning_counts,
-            "timeline_sample": warning_timeline[:50],  # Return up to first 50 incidents
+            "timeline_sample": warning_timeline[:50],
         },
     }
 
@@ -273,6 +339,7 @@ async def websocket_analytics_endpoint(websocket: WebSocket) -> None:
     Server returns evaluated stability, warnings, and touchdown scores.
     """
     await websocket.accept()
+    tracker = FlightPhaseTracker()  # flight state is per stream, never shared between clients
     logger.info("WebSocket client connected to /ws/analytics")
 
     try:
@@ -286,28 +353,24 @@ async def websocket_analytics_endpoint(websocket: WebSocket) -> None:
                 )
                 continue
 
-            target_ias = telemetry.get("target_ias_kt")
-            is_vmc = bool(telemetry.get("is_vmc", False))
+            if not isinstance(telemetry, dict):
+                await websocket.send_text(json.dumps({"error": "INVALID_TELEMETRY_FRAME"}))
+                continue
 
-            stability = approach_monitor.evaluate_frame(
-                telemetry, target_ias_kt=target_ias, is_vmc=is_vmc
+            frame = normalize_frame(telemetry)
+            state = tracker.update(frame)
+            is_vmc = frame.get("is_vmc")
+            response = evaluate_with_phase(
+                frame,
+                state,
+                target_ias_kt=frame.get("target_ias_kt"),
+                is_vmc=None if is_vmc is None else bool(is_vmc),
             )
-            warnings = warnings_generator.evaluate_warnings(
-                telemetry, target_ias_kt=target_ias
-            )
-            landing = landing_evaluator.evaluate_frame(telemetry)
-
-            response = {
-                "timestamp": telemetry.get("time_sec", time.time()),
-                "stabilized_approach": stability,
-                "warnings": warnings,
-                "landing_score": landing,
-            }
             await websocket.send_text(json.dumps(response))
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected from /ws/analytics")
-    except Exception as e:
-        logger.error("WebSocket analytics error: %s", e)
+    except Exception:
+        logger.exception("WebSocket analytics stream failed")
 
 
 if __name__ == "__main__":

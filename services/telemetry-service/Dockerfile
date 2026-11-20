@@ -32,7 +32,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY config.py models.py parser.py replay.py server.py __init__.py ./
 
 # Create data directory and copy flight data for self-contained replay mode
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data /app/uploads
 COPY data/telemetry_essential.csv /app/data/telemetry_essential.csv
 
 # Set ownership to non-root user

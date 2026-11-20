@@ -8,6 +8,7 @@ class InstructorPanelApp {
     this.ws = null;
     this.isConnected = false;
     this.reconnectTimer = null;
+    this.pingTimer = null;
 
     // Latency & packet rate tracking
     this.lastPingSent = 0;
@@ -19,7 +20,6 @@ class InstructorPanelApp {
     // Microservice statuses
     this.serviceStatus = {
       telemetry: 'OFFLINE',
-      vision: 'OFFLINE',
       analytics: 'OFFLINE',
     };
 
@@ -50,7 +50,6 @@ class InstructorPanelApp {
     this.latencyVal = document.getElementById('stat-latency-val');
     this.hzVal = document.getElementById('stat-hz-val');
     this.telemetryPill = document.getElementById('pill-telemetry');
-    this.visionPill = document.getElementById('pill-vision');
     this.analyticsPill = document.getElementById('pill-analytics');
     this.zuluClock = document.getElementById('header-zulu-clock');
     this.sessionTimer = document.getElementById('header-session-time');
@@ -94,6 +93,8 @@ class InstructorPanelApp {
     // Close Landing Report Modal
     const btnCloseRpt = document.getElementById('btn-close-report');
     if (btnCloseRpt) btnCloseRpt.addEventListener('click', () => this.alerts.closeLandingReport());
+    const btnCloseRptX = document.getElementById('btn-close-report-x');
+    if (btnCloseRptX) btnCloseRptX.addEventListener('click', () => this.alerts.closeLandingReport());
 
     const btnResetRpt = document.getElementById('btn-reset-report');
     if (btnResetRpt) btnResetRpt.addEventListener('click', () => this.alerts.resetLandingReport());
@@ -218,7 +219,6 @@ class InstructorPanelApp {
         )
       );
       const isTelemetryOnline = (this.serviceStatus.telemetry === 'ONLINE') && isSimulatorDataFlowing;
-      const isVisionOnline = this.serviceStatus.vision === 'ONLINE';
       if (viewName === 'pfd' || viewName === 'all') {
         this.pfd.update(this.lastPayload.telemetry, isTelemetryOnline);
       }
@@ -230,9 +230,6 @@ class InstructorPanelApp {
       }
       if (viewName === 'engine' || viewName === 'all') {
         this.engine.update(this.lastPayload.telemetry, isTelemetryOnline);
-      }
-      if (viewName === 'all') {
-        this.updateVisionHUD(this.lastPayload.vision, isVisionOnline);
       }
     }
 
@@ -246,7 +243,11 @@ class InstructorPanelApp {
 
   connect() {
     if (this.ws) {
-      try { this.ws.close(); } catch (e) {}
+      // Detach handlers first so closing the old socket cannot schedule another reconnect.
+      this.ws.onopen = this.ws.onmessage = this.ws.onclose = this.ws.onerror = null;
+      if (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN) {
+        this.ws.close();
+      }
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -280,6 +281,7 @@ class InstructorPanelApp {
     this.ws.onclose = () => {
       console.warn('[IOS Gateway] Disconnected.');
       this.isConnected = false;
+      this.stopPingLoop();
       this.updateConnectionUI('DISCONNECTED', '#ef4444');
       this.markAllOffline();
       this.scheduleReconnect();
@@ -300,12 +302,22 @@ class InstructorPanelApp {
   }
 
   startPingLoop() {
-    setInterval(() => {
+    // One timer per connection: without clearing, every reconnect added another
+    // interval and the panel ended up sending several pings per second.
+    this.stopPingLoop();
+    this.pingTimer = setInterval(() => {
       if (this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.lastPingSent = performance.now();
         this.ws.send(JSON.stringify({ type: 'ping', t: this.lastPingSent }));
       }
     }, 1000);
+  }
+
+  stopPingLoop() {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
   }
 
   handleMessage(dataStr) {
@@ -322,7 +334,7 @@ class InstructorPanelApp {
       const rtt = performance.now() - (payload.client_t || this.lastPingSent);
       this.latencyMs = Math.round(rtt / 2);
       if (this.latencyVal) {
-        this.latencyVal.innerText = `${this.latencyMs} ms`;
+        this.latencyVal.textContent = `${this.latencyMs} ms`;
         this.latencyVal.style.color = this.latencyMs < 50 ? '#22c55e' : (this.latencyMs < 100 ? '#eab308' : '#ef4444');
       }
       return;
@@ -360,7 +372,6 @@ class InstructorPanelApp {
       )
     );
     const isTelemetryOnline = (this.serviceStatus.telemetry === 'ONLINE') && isSimulatorDataFlowing;
-    const isVisionOnline = this.serviceStatus.vision === 'ONLINE';
     const isAnalyticsOnline = (this.serviceStatus.analytics === 'ONLINE') && isTelemetryOnline;
 
     // Master Warning / Caution & Annunciator Bar always updates
@@ -392,16 +403,15 @@ class InstructorPanelApp {
   }
 
   updateServicePills() {
-    this.setPill(this.telemetryPill, 'TELEMETRY', this.serviceStatus.telemetry);
-    this.setPill(this.visionPill, 'VISION', this.serviceStatus.vision);
-    this.setPill(this.analyticsPill, 'ANALYTICS', this.serviceStatus.analytics);
+    this.setPill(this.telemetryPill, 'Телеметрія', this.serviceStatus.telemetry);
+    this.setPill(this.analyticsPill, 'Аналітика', this.serviceStatus.analytics);
   }
 
   setPill(element, label, status) {
     if (!element) return;
     const isOnline = status === 'ONLINE';
     element.className = `service-pill ${isOnline ? 'online' : 'offline'}`;
-    element.innerText = `${label}: ${status}`;
+    element.title = `${label}: ${status}`;
   }
 
   updateConnectionUI(statusText, color) {
@@ -413,7 +423,6 @@ class InstructorPanelApp {
 
   markAllOffline() {
     this.serviceStatus.telemetry = 'OFFLINE';
-    this.serviceStatus.vision = 'OFFLINE';
     this.serviceStatus.analytics = 'OFFLINE';
     this.updateServicePills();
 
@@ -425,42 +434,6 @@ class InstructorPanelApp {
       this.standby.update(null, false);
     }
     this.alerts.update(null, null, false);
-    this.updateVisionHUD(null, false);
-  }
-
-  updateVisionHUD(vision, isOnline) {
-    const pilotElem = document.getElementById('hud-pilot-detected');
-    const gazeElem = document.getElementById('hud-gaze-direction');
-    const postureElem = document.getElementById('hud-posture-alert');
-
-    if (!isOnline || !vision) {
-      if (pilotElem) {
-        pilotElem.innerText = 'nodata';
-        pilotElem.className = 'hud-val text-muted';
-      }
-      if (gazeElem) {
-        gazeElem.innerText = 'nodata';
-        gazeElem.className = 'hud-val text-muted';
-      }
-      if (postureElem) {
-        postureElem.innerText = 'nodata';
-        postureElem.className = 'hud-val text-muted';
-      }
-      return;
-    }
-
-    if (pilotElem) {
-      pilotElem.innerText = vision.pilot_detected ? 'DETECTED' : 'NOT DETECTED';
-      pilotElem.className = vision.pilot_detected ? 'hud-val text-ok' : 'hud-val text-warn';
-    }
-    if (gazeElem) {
-      gazeElem.innerText = vision.gaze_direction || 'FORWARD (OUTSIDE)';
-      gazeElem.className = 'hud-val text-cyan';
-    }
-    if (postureElem) {
-      postureElem.innerText = vision.posture_alert || 'NORMAL';
-      postureElem.className = vision.posture_alert ? 'hud-val text-warn' : 'hud-val text-ok';
-    }
   }
 
   updateClocks() {

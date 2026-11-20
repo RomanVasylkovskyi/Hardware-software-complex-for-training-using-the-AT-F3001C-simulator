@@ -74,271 +74,96 @@ def locate_flight_data_file(preferred_path: Optional[str] = None) -> Path:
     )
 
 
+def _c_to_f(value: Optional[float]) -> Optional[float]:
+    return None if value is None else value * 9.0 / 5.0 + 32.0
+
+
+def _first_present(row: Dict[str, Optional[float]], *keys: str) -> Optional[float]:
+    for key in keys:
+        value = row.get(key)
+        if value is not None:
+            return value
+    return None
+
+
 def pack_real_row_to_xplane_udp(row: Dict[str, Optional[float]]) -> bytes:
     """
-    Pack a real flight recording data row into an authentic X-Plane 11 UDP datagram.
-    Format: b'DATA\\x00' + N * 36 bytes (<i8f).
-    Unrecorded fields are encoded as -999.0.
+    Pack a recorded flight row into an X-Plane 11 UDP DATA datagram using the
+    native X-Plane 11 row layout, so live and replayed traffic share one parser path.
+
+    Only recorded values are transmitted. A missing value is sent as -999.0, and a
+    row whose eight values are all missing is not transmitted at all (the parser then
+    reports that subsystem as NO_SIGNAL instead of showing invented numbers).
+
+    Temperatures are transmitted in degrees Fahrenheit, exactly as X-Plane 11 does
+    for EGT (row 47) and oil temperature (row 50).
     """
     def sanitize(val: Optional[float]) -> float:
         if val is None or math.isnan(val) or math.isinf(val):
             return XPLANE_NULL
         return float(val)
 
-    # 1. Channel 0: Frame rates & Total time
-    total_time = sanitize(row.get("total_time"))
-    ch0 = struct.pack(
-        "<i8f",
-        0,
-        20.0,        # f_act (FPS)
-        20.0,        # f_sim (FPS)
-        total_time,  # total time sec
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
+    def record(channel: int, values: List[Optional[float]]) -> bytes:
+        padded = (list(values) + [None] * 8)[:8]
+        if all(v is None for v in padded):
+            return b""
+        return struct.pack("<i8f", channel, *(sanitize(v) for v in padded))
 
-    # 2. Channel 3: Speeds (vind_kias, vind_keas, vt_ktas, vt_ktgs, vind_mph, vt_mphs, vt_mphg, spare)
-    kias = sanitize(row.get("indicated_airspeed_kt"))
-    ktas = sanitize(row.get("true_airspeed_kt"))
-    ktgs = sanitize(row.get("groundspeed_kt"))
-    ch3 = struct.pack(
-        "<i8f",
-        3,
-        kias, XPLANE_NULL, ktas, ktgs,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
+    egt_f = _first_present(row, "egt_f")
+    if egt_f is None:
+        egt_f = _c_to_f(row.get("egt_c"))
+    oil_temp_f = _first_present(row, "oil_temp_f")
+    if oil_temp_f is None:
+        oil_temp_f = _c_to_f(row.get("oil_temp_c"))
 
-    # 3. Channel 4: Mach, VVI, G-loads (mach, vvi_fpm, g_nrml, g_axil, g_side, spare, spare, spare)
-    vvi = sanitize(row.get("vertical_speed_fpm"))
-    g_nrml = sanitize(row.get("g_load_normal"))
-    g_axil = sanitize(row.get("g_load_axial"))
-    g_side = sanitize(row.get("g_load_side"))
-    ch4 = struct.pack(
-        "<i8f",
-        4,
-        XPLANE_NULL, vvi, g_nrml, g_axil, g_side,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
+    flap = row.get("flap_ratio")
 
-    # 4. Channel 8: Flight Controls (elev, ailrn, ruddr, ...)
-    elev = sanitize(row.get("elevator_stick"))
-    ch8 = struct.pack(
-        "<i8f",
-        8,
-        elev, XPLANE_NULL, XPLANE_NULL,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
+    records = [
+        # 1: real, totl, missn, timer, _, zulu, local, hobbs
+        record(1, [None, row.get("total_time"), None, None, None, None, None, None]),
+        # 3: kias, keas, ktas, ktgs, _, mph, mphas, mphgs
+        record(3, [row.get("indicated_airspeed_kt"), None, row.get("true_airspeed_kt"), row.get("groundspeed_kt")]),
+        # 4: mach, _, vvi, _, g normal, g axial, g side, _
+        record(4, [None, None, row.get("vertical_speed_fpm"), None,
+                   row.get("g_load_normal"), row.get("g_load_axial"), row.get("g_load_side")]),
+        # 7: altimeter setting (inHg)
+        record(7, [row.get("barometer_setting_inhg")]),
+        # 8: elevator, aileron, rudder stick
+        record(8, [row.get("elevator_stick"), row.get("aileron_stick"), row.get("rudder_stick")]),
+        # 13: trim elev, trim ail, trim rud, flap handle, flap position, slat, sbrake handle, sbrake position
+        record(13, [None, None, None, flap, flap]),
+        # 14: gear, wheel brakes
+        record(14, [row.get("gear_ratio")]),
+        # 17: pitch, roll, heading true, heading mag
+        record(17, [row.get("pitch_deg"), row.get("roll_deg"), row.get("heading_true_deg"), row.get("heading_mag_deg")]),
+        # 18: alpha, beta, hpath, vpath
+        record(18, [row.get("aoa_alpha_deg"), row.get("sideslip_beta_deg")]),
+        # 20: lat, lon, alt msl, alt agl, on runway, alt indicated
+        record(20, [row.get("latitude"), row.get("longitude"), row.get("altitude_msl_ft"),
+                    row.get("altitude_agl_ft"), row.get("on_runway"), row.get("altitude_ind_ft")]),
+        # 25: throttle commanded
+        record(25, [row.get("throttle_ratio")]),
+        # 37: engine rpm
+        record(37, [row.get("engine_rpm")]),
+        # 45: fuel flow gal/h
+        record(45, [row.get("fuel_flow_gph")]),
+        # 47: EGT deg F
+        record(47, [egt_f]),
+        # 49: oil pressure psi
+        record(49, [row.get("oil_press_psi")]),
+        # 50: oil temperature deg F
+        record(50, [oil_temp_f]),
+        # 62: fuel tank 1, fuel tank 2 (gal); a single recorded total goes into tank 1
+        record(62, [_first_present(row, "fuel_tank1_gal", "fuel_qty_gal"), row.get("fuel_tank2_gal")]),
+        # Autopilot / flight director / navigation: transmitted only when the recording has them.
+        record(102, [None, None, row.get("target_course_deg")]),
+        record(103, [None, None, row.get("nav_distance_nm"), row.get("nav_bearing_deg")]),
+        record(108, [None, row.get("fd_mode"), row.get("fd_pitch_deg"), row.get("fd_roll_deg")]),
+        record(117, [None, row.get("hdg_mode"), row.get("alt_mode")]),
+        record(118, [row.get("target_heading_deg"), None, row.get("target_vvi_fpm"), row.get("target_altitude_ft")]),
+    ]
 
-    # 5. Channel 13: Trims & Flaps (elev_trim, ailrn_trim, ruddr_trim, flap_ratio, flap_actual, ...)
-    flap = sanitize(row.get("flap_ratio"))
-    ch13 = struct.pack(
-        "<i8f",
-        13,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, flap, flap,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 6. Channel 14: Gear & Brakes (gear_ratio, wbrak_l, wbrak_r, ...)
-    gear = sanitize(row.get("gear_ratio"))
-    ch14 = struct.pack(
-        "<i8f",
-        14,
-        gear, XPLANE_NULL, XPLANE_NULL,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 7. Channel 17: Pitch, Roll, Headings (pitch, roll, hdng_true, hdng_mag, ...)
-    pitch = sanitize(row.get("pitch_deg"))
-    roll = sanitize(row.get("roll_deg"))
-    hdng_t = sanitize(row.get("heading_true_deg"))
-    hdng_m = sanitize(row.get("heading_mag_deg"))
-    ch17 = struct.pack(
-        "<i8f",
-        17,
-        pitch, roll, hdng_t, hdng_m,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 8. Channel 18: AoA, Sideslip (aoa_alpha, sideslip_beta, hpath, vpath, ...)
-    aoa = sanitize(row.get("aoa_alpha_deg"))
-    beta = sanitize(row.get("sideslip_beta_deg"))
-    ch18 = struct.pack(
-        "<i8f",
-        18,
-        aoa, beta, XPLANE_NULL, XPLANE_NULL,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 9. Channel 20: Lat, Lon, Altitude (lat, lon, alt_msl, alt_agl, on_rwy, alt_ind, ...)
-    lat = sanitize(row.get("latitude"))
-    lon = sanitize(row.get("longitude"))
-    alt_msl = sanitize(row.get("altitude_msl_ft"))
-    alt_agl = sanitize(row.get("altitude_agl_ft"))
-    on_rwy = sanitize(row.get("on_runway"))
-    alt_ind = sanitize(row.get("altitude_ind_ft", alt_msl))
-    ch20 = struct.pack(
-        "<i8f",
-        20,
-        lat, lon, alt_msl, alt_agl, on_rwy,
-        alt_ind, XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 10. Channel 25: Throttle commanded
-    throt = sanitize(row.get("throttle_ratio"))
-    ch25 = struct.pack(
-        "<i8f",
-        25,
-        throt, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 11. Channel 37: Engine RPM
-    rpm = sanitize(row.get("engine_rpm"))
-    ch37 = struct.pack(
-        "<i8f",
-        37,
-        rpm, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 12. Channel 39: Oil Temp and Pressure (oil_temp_degc, oil_press_psi)
-    oil_t = sanitize(row.get("oil_temp_c"))
-    oil_p = sanitize(row.get("oil_press_psi"))
-    ch39 = struct.pack(
-        "<i8f",
-        39,
-        oil_t, oil_p, XPLANE_NULL, XPLANE_NULL,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 13. Channel 43: Exhaust Gas Temperature (EGT)
-    egt = sanitize(row.get("egt_c"))
-    ch43 = struct.pack(
-        "<i8f",
-        43,
-        egt, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 14. Channel 47: Fuel Flow (GPH)
-    ff_gph = sanitize(row.get("fuel_flow_gph"))
-    ch47 = struct.pack(
-        "<i8f",
-        47,
-        ff_gph, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 15. Channel 62: Fuel Quantity (GAL)
-    fuel_qty = sanitize(row.get("fuel_qty_gal"))
-    ch62 = struct.pack(
-        "<i8f",
-        62,
-        fuel_qty, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 16. Channel 21: Flight Director (pitch, roll, hdg)
-    fd_pitch = sanitize(row.get("fd_pitch_deg", row.get("pitch_deg", 0.0)))
-    fd_roll = sanitize(row.get("fd_roll_deg", 0.0))
-    ch21 = struct.pack(
-        "<i8f",
-        21,
-        fd_pitch, fd_roll, XPLANE_NULL,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 17. Channel 117: Autopilot Reference & Modes (spd, hdg_mode, alt_mode)
-    tgt_alt = sanitize(row.get("target_altitude_ft", 1000.0))
-    tgt_vvi = sanitize(row.get("target_vvi_fpm", 0.0))
-    tgt_spd = sanitize(row.get("target_speed_kt", 110.0))
-    hdg_mode_flag = 1.0 if sanitize(row.get("hdg_mode", 1.0)) >= 0.5 else 0.0
-    alt_mode_flag = 6.0 if sanitize(row.get("alt_mode", 1.0)) >= 0.5 else 0.0
-    ch117 = struct.pack(
-        "<i8f",
-        117,
-        tgt_spd, hdg_mode_flag, alt_mode_flag,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 18. Channel 118: Autopilot Nav & Heading (hdg, nav2, set_vvi, alt_dial, vvi_dial, alt_target, fd_roll, fd_pitch)
-    tgt_hdg = sanitize(row.get("target_heading_deg", 127.0))
-    tgt_crs = sanitize(row.get("target_course_deg", 127.0))
-    tgt_vvi = sanitize(row.get("target_vvi_fpm", 500.0))
-    tgt_alt = sanitize(row.get("target_altitude_ft", 3000.0))
-    ch118 = struct.pack(
-        "<i8f",
-        118,
-        tgt_hdg, tgt_crs, tgt_vvi,
-        tgt_alt, tgt_vvi, tgt_alt, fd_roll, fd_pitch
-    )
-
-    # 19. Channel 119: Autopilot Modes (fd, ap, alt, hdg, nav, app)
-    fd_m = sanitize(row.get("fd_mode", 1.0))
-    ap_m = sanitize(row.get("ap_mode", 2.0))
-    alt_m = sanitize(row.get("alt_mode", 2.0))
-    hdg_m = sanitize(row.get("hdg_mode", 2.0))
-    nav_m = sanitize(row.get("nav_mode", 0.0))
-    app_m = sanitize(row.get("app_mode", 0.0))
-    ch119 = struct.pack(
-        "<i8f",
-        119,
-        fd_m, ap_m, alt_m, hdg_m, nav_m, app_m,
-        XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 20. Channel 108: Autopilot Flight Director master mode & commands
-    ap_fdir_mode = 2.0 if ap_m >= 1.5 else (1.0 if fd_m >= 0.5 else 0.0)
-    ch108 = struct.pack(
-        "<i8f",
-        108,
-        XPLANE_NULL, ap_fdir_mode, fd_pitch, fd_roll,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 21. Channel 103: GPS Navigation Waypoint guidance
-    nav_dist = sanitize(row.get("nav_distance_nm", 4.7))
-    nav_brg = sanitize(row.get("nav_bearing_deg", 137.0))
-    ch103 = struct.pack(
-        "<i8f",
-        103,
-        XPLANE_NULL, XPLANE_NULL, nav_dist, nav_brg,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
-
-    # 22. Channel 7: System Pressures / Altimeter Barometer Setting (baro-pilot inHg)
-    baro_val = sanitize(row.get("barometer_setting_inhg", 28.70))
-    ch7 = struct.pack(
-        "<i8f",
-        7,
-        baro_val, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL,
-        XPLANE_NULL, XPLANE_NULL, XPLANE_NULL, XPLANE_NULL
-    )
-
-    return (
-        XPLANE_HEADER
-        + ch0
-        + ch3
-        + ch4
-        + ch8
-        + ch13
-        + ch14
-        + ch17
-        + ch18
-        + ch20
-        + ch25
-        + ch37
-        + ch39
-        + ch43
-        + ch47
-        + ch62
-        + ch21
-        + ch103
-        + ch108
-        + ch117
-        + ch118
-        + ch119
-        + ch7
-    )
+    return XPLANE_HEADER + b"".join(records)
 
 
 class FlightDataReplayer:
@@ -485,7 +310,11 @@ class FlightDataReplayer:
             raise ValueError(f"Could not locate header and numeric records in {file_path}")
 
         raw_headers = [c.strip() for c in lines[header_idx].split("|") if c.strip()]
-        header_map = {raw_headers[i]: i for i in range(len(raw_headers))}
+        # X-Plane repeats some labels (e.g. "thro1,_part" for commanded and actual throttle):
+        # the first occurrence is the one we want, so later duplicates must not overwrite it.
+        header_map: Dict[str, int] = {}
+        for i, name in enumerate(raw_headers):
+            header_map.setdefault(name, i)
 
         def get_val(parts_list: List[str], *candidates: str) -> Optional[float]:
             for cand in candidates:
@@ -545,11 +374,14 @@ class FlightDataReplayer:
                 "elevator_stick": get_val(parts, "_elev,stick"),
                 "throttle_ratio": get_val(parts, "thro1,_part"),
                 "engine_rpm": get_val(parts, "rpm_1,engin", "rpm_1,_prop"),
-                "egt_c": get_val(parts, "EGT_1,__deg"),
+                # X-Plane 11 writes EGT and oil temperature in degrees Fahrenheit.
+                "egt_f": get_val(parts, "EGT_1,__deg"),
                 "oil_press_psi": get_val(parts, "OILP1,__psi"),
-                "oil_temp_c": get_val(parts, "OILT1,__deg"),
+                "oil_temp_f": get_val(parts, "OILT1,__deg"),
                 "fuel_flow_gph": get_val(parts, "FF__1,gal/h"),
-                "fuel_qty_gal": get_val(parts, "fuel1,__gal"),
+                "fuel_tank1_gal": get_val(parts, "fuel1,__gal"),
+                "fuel_tank2_gal": get_val(parts, "fuel2,__gal"),
+                "barometer_setting_inhg": get_val(parts, "baro_,_inHG"),
             }
             records.append(row_dict)
 

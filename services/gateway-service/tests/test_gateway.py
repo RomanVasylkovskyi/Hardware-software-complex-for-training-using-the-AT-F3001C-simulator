@@ -17,7 +17,7 @@ src_dir = current_dir.parent / "src"
 sys.path.insert(0, str(src_dir))
 
 from config import Settings
-from aggregator import StreamAggregator, normalize_telemetry
+from aggregator import StreamAggregator, analytics_frame, normalize_telemetry
 
 
 class TestGatewayService(unittest.TestCase):
@@ -34,14 +34,12 @@ class TestGatewayService(unittest.TestCase):
         """CRITICAL: If backend services are offline, payload must report nulls, NEVER fake data."""
         payload = self.aggregator.get_unified_payload()
 
-        self.assertEqual(payload["service_status"]["telemetry"], "OFFLINE")
-        self.assertEqual(payload["service_status"]["vision"], "OFFLINE")
-        self.assertEqual(payload["service_status"]["analytics"], "OFFLINE")
+        self.assertEqual(payload["service_status"], {"telemetry": "OFFLINE", "analytics": "OFFLINE"})
 
-        # Telemetry, vision, and analytics MUST BE null
+        # Telemetry and analytics MUST BE null
         self.assertIsNone(payload["telemetry"])
-        self.assertIsNone(payload["vision"])
         self.assertIsNone(payload["analytics"])
+        self.assertNotIn("vision", payload)
 
         self.assertEqual(payload["broadcast_rate_hz"], 25.0)
         self.assertEqual(payload["airport_icao"], "UKLL")
@@ -161,6 +159,32 @@ class TestGatewayService(unittest.TestCase):
             self.assertIn("pfd-canvas", r_index.text)
 
 
+
+
+    def test_raw_channels_are_not_forwarded(self):
+        flat = normalize_telemetry({"speeds": {"indicated_airspeed_kt": 90.0}, "raw_channels": {"3": [90.0]}})
+        self.assertNotIn("raw_channels", flat)
+        self.assertEqual(flat["indicated_airspeed_kt"], 90.0)
+
+    def test_analytics_frame_is_flat(self):
+        flat = normalize_telemetry({"speeds": {"indicated_airspeed_kt": 90.0}, "status": {"connection": "REPLAY"}})
+        frame = analytics_frame(flat)
+        self.assertEqual(frame["indicated_airspeed_kt"], 90.0)
+        self.assertFalse(any(isinstance(v, (dict, list)) for v in frame.values()))
+
+    def test_control_endpoints_require_token_when_configured(self):
+        from fastapi.testclient import TestClient
+        import main
+        original = main.settings.INSTRUCTOR_TOKEN
+        main.settings.INSTRUCTOR_TOKEN = "s3cret"
+        try:
+            client = TestClient(main.app)
+            self.assertEqual(client.post("/api/replay/stop").status_code, 401)
+            self.assertEqual(client.post("/api/mode/live", headers={"X-Instructor-Token": "wrong"}).status_code, 401)
+            self.assertEqual(client.get("/api/auth/check", headers={"X-Instructor-Token": "s3cret"}).status_code, 200)
+            self.assertEqual(client.get("/api/telemetry").status_code, 200)  # read-only stays open
+        finally:
+            main.settings.INSTRUCTOR_TOKEN = original
 
 if __name__ == "__main__":
     unittest.main()

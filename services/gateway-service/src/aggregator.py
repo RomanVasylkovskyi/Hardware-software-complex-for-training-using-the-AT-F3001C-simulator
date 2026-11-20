@@ -1,6 +1,6 @@
 """
 Stream Aggregator.
-Subscribes to upstream microservices (telemetry, vision, analytics),
+Subscribes to upstream microservices (telemetry, analytics),
 coordinates real-time forwarding between telemetry and analytics,
 and merges them into a unified, high-frequency avionics payload.
 """
@@ -103,7 +103,16 @@ def normalize_telemetry(raw: Any) -> Optional[Dict[str, Any]]:
             if k not in flat or flat[k] is None:
                 flat[k] = v
 
+    # Raw X-Plane channel arrays are diagnostic only; no client reads them and they
+    # roughly double every message sent to the panels.
+    flat.pop("raw_channels", None)
+
     return flat
+
+
+def analytics_frame(normalized: Dict[str, Any]) -> Dict[str, Any]:
+    """Flat scalar fields only: what the analytics service evaluates."""
+    return {k: v for k, v in normalized.items() if not isinstance(v, (dict, list))}
 
 
 class StreamAggregator:
@@ -114,31 +123,37 @@ class StreamAggregator:
         # Status of each upstream microservice ("ONLINE" or "OFFLINE")
         self.service_status: Dict[str, str] = {
             "telemetry": "OFFLINE",
-            "vision": "OFFLINE",
             "analytics": "OFFLINE",
         }
 
         # Latest raw payload from each upstream service (None if OFFLINE)
         self.latest_data: Dict[str, Optional[Dict[str, Any]]] = {
             "telemetry": None,
-            "vision": None,
             "analytics": None,
         }
 
-        # Active websocket handle to analytics service (to pipe telemetry frames)
-        self._analytics_ws: Optional[websockets.WebSocketClientProtocol] = None
+        # Telemetry frames waiting to be piped to the analytics service. Analytics is
+        # stateful (flight phase, touchdown window), so frames are queued in order rather
+        # than "latest only"; the bound keeps memory flat if analytics stalls.
+        self._analytics_queue: asyncio.Queue = asyncio.Queue(maxsize=settings.ANALYTICS_QUEUE_SIZE)
+        self._analytics_dropped = 0
+        # Analytics only answers frames it is sent, so silence is not a failure by itself:
+        # it is OFFLINE when disconnected, or when frames were sent but not answered in time.
+        self._analytics_connected = False
+        self._analytics_last_sent = 0.0
+
+        # Set whenever fresh upstream data arrives; the broadcaster waits on it.
+        self.update_event = asyncio.Event()
 
         # Last time a packet was received from each service (unix timestamp)
         self.last_seen: Dict[str, float] = {
             "telemetry": 0.0,
-            "vision": 0.0,
             "analytics": 0.0,
         }
 
         # Statistics
         self.packet_counts: Dict[str, int] = {
             "telemetry": 0,
-            "vision": 0,
             "analytics": 0,
         }
 
@@ -156,12 +171,6 @@ class StreamAggregator:
             asyncio.create_task(
                 self._listen_telemetry(self.settings.TELEMETRY_WS_URL),
                 name="listen_telemetry",
-            )
-        )
-        self._tasks.append(
-            asyncio.create_task(
-                self._listen_vision(self.settings.VISION_WS_URL),
-                name="listen_vision",
             )
         )
         self._tasks.append(
@@ -219,18 +228,17 @@ class StreamAggregator:
                             if isinstance(message, bytes):
                                 message = message.decode("utf-8")
                             raw_data = json.loads(message)
-                            normalized = normalize_telemetry(raw_data)
-                            self.latest_data["telemetry"] = normalized
-
-                            # If analytics service is connected, forward frame for analysis
-                            if self._analytics_ws and normalized:
-                                try:
-                                    await self._analytics_ws.send(json.dumps(normalized))
-                                except Exception:
-                                    pass
-
-                        except Exception as parse_err:
+                        except (json.JSONDecodeError, UnicodeDecodeError) as parse_err:
                             logger.warning("Failed to parse telemetry JSON: %s", parse_err)
+                            continue
+                        normalized = normalize_telemetry(raw_data)
+                        if normalized is None:
+                            logger.warning("Ignoring non-object telemetry message")
+                            continue
+                        self.latest_data["telemetry"] = normalized
+                        self.update_event.set()
+                        if self._analytics_connected:
+                            self._enqueue_for_analytics(analytics_frame(normalized))
 
             except (
                 ConnectionRefusedError,
@@ -253,62 +261,56 @@ class StreamAggregator:
             if self.running:
                 await asyncio.sleep(reconnect_delay)
 
-    async def _listen_vision(self, ws_url: str) -> None:
-        """Listen to vision-service on port 8002."""
-        reconnect_delay = self.settings.RECONNECT_DELAY_SEC
-
-        while self.running:
+    def _enqueue_for_analytics(self, frame: Dict[str, Any]) -> None:
+        try:
+            self._analytics_queue.put_nowait(frame)
+        except asyncio.QueueFull:
+            # Drop the oldest frame: analytics is behind, keep the stream moving.
             try:
-                logger.debug("Connecting to vision at %s...", ws_url)
-                async with websockets.connect(
-                    ws_url,
-                    ping_interval=5,
-                    ping_timeout=5,
-                    close_timeout=3,
-                ) as ws:
-                    logger.info("Connected to upstream service [vision] at %s", ws_url)
-                    self.service_status["vision"] = "ONLINE"
-                    self.last_seen["vision"] = time.time()
+                self._analytics_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+            self._analytics_queue.put_nowait(frame)
+            self._analytics_dropped += 1
+            if self._analytics_dropped % 100 == 1:
+                logger.warning(
+                    "Analytics service is lagging: %d telemetry frames dropped so far",
+                    self._analytics_dropped,
+                )
 
-                    async for message in ws:
-                        if not self.running:
-                            break
-                        now = time.time()
-                        self.last_seen["vision"] = now
-                        self.service_status["vision"] = "ONLINE"
-                        self.packet_counts["vision"] += 1
+    def _drain_analytics_queue(self) -> None:
+        while not self._analytics_queue.empty():
+            self._analytics_queue.get_nowait()
 
-                        try:
-                            if isinstance(message, bytes):
-                                message = message.decode("utf-8")
-                            data = json.loads(message)
-                            self.latest_data["vision"] = data
-                        except Exception as parse_err:
-                            logger.warning("Failed to parse vision JSON: %s", parse_err)
+    async def _pipe_to_analytics(self, ws: Any) -> None:
+        """Send queued telemetry frames to the analytics service in order."""
+        while True:
+            frame = await self._analytics_queue.get()
+            await ws.send(json.dumps(frame))
+            self._analytics_last_sent = time.time()
 
-            except (
-                ConnectionRefusedError,
-                OSError,
-                websockets.exceptions.WebSocketException,
-                asyncio.TimeoutError,
-            ) as e:
-                if self.service_status["vision"] != "OFFLINE":
-                    logger.warning("Upstream [vision] unreachable (%s). Marking OFFLINE.", e)
-                self.service_status["vision"] = "OFFLINE"
-                self.latest_data["vision"] = None
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error("Unexpected error in vision listener: %s", e)
-                self.service_status["vision"] = "OFFLINE"
-                self.latest_data["vision"] = None
-
-            if self.running:
-                await asyncio.sleep(reconnect_delay)
+    async def _receive_from_analytics(self, ws: Any) -> None:
+        async for message in ws:
+            if not self.running:
+                return
+            self.last_seen["analytics"] = time.time()
+            self.service_status["analytics"] = "ONLINE"
+            self.packet_counts["analytics"] += 1
+            try:
+                if isinstance(message, bytes):
+                    message = message.decode("utf-8")
+                data = json.loads(message)
+            except (json.JSONDecodeError, UnicodeDecodeError) as parse_err:
+                logger.warning("Failed to parse analytics JSON: %s", parse_err)
+                continue
+            if isinstance(data, dict) and "error" in data:
+                logger.warning("Analytics rejected a frame: %s", data["error"])
+                continue
+            self.latest_data["analytics"] = data
+            self.update_event.set()
 
     async def _listen_analytics(self, ws_url: str) -> None:
-        """Connect to analytics-service on port 8003, pipe telemetry and receive results."""
+        """Connect to analytics-service, pipe telemetry frames in and receive evaluations."""
         reconnect_delay = self.settings.RECONNECT_DELAY_SEC
 
         while self.running:
@@ -321,25 +323,27 @@ class StreamAggregator:
                     close_timeout=3,
                 ) as ws:
                     logger.info("Connected to upstream service [analytics] at %s", ws_url)
-                    self._analytics_ws = ws
+                    # A new connection starts a new analytics flight state: send only fresh frames.
+                    self._drain_analytics_queue()
+                    self._analytics_connected = True
                     self.service_status["analytics"] = "ONLINE"
                     self.last_seen["analytics"] = time.time()
 
-                    async for message in ws:
-                        if not self.running:
-                            break
-                        now = time.time()
-                        self.last_seen["analytics"] = now
-                        self.service_status["analytics"] = "ONLINE"
-                        self.packet_counts["analytics"] += 1
-
-                        try:
-                            if isinstance(message, bytes):
-                                message = message.decode("utf-8")
-                            data = json.loads(message)
-                            self.latest_data["analytics"] = data
-                        except Exception as parse_err:
-                            logger.warning("Failed to parse analytics JSON: %s", parse_err)
+                    sender = asyncio.create_task(self._pipe_to_analytics(ws), name="analytics_sender")
+                    receiver = asyncio.create_task(self._receive_from_analytics(ws), name="analytics_receiver")
+                    try:
+                        done, pending = await asyncio.wait(
+                            {sender, receiver}, return_when=asyncio.FIRST_COMPLETED
+                        )
+                    finally:
+                        self._analytics_connected = False
+                        for task in (sender, receiver):
+                            if not task.done():
+                                task.cancel()
+                        await asyncio.gather(sender, receiver, return_exceptions=True)
+                    for task in done:
+                        if not task.cancelled() and task.exception() is not None:
+                            raise task.exception()
 
             except (
                 ConnectionRefusedError,
@@ -351,15 +355,13 @@ class StreamAggregator:
                     logger.warning("Upstream [analytics] unreachable (%s). Marking OFFLINE.", e)
                 self.service_status["analytics"] = "OFFLINE"
                 self.latest_data["analytics"] = None
-                self._analytics_ws = None
 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                logger.error("Unexpected error in analytics listener: %s", e)
+            except Exception:
+                logger.exception("Unexpected error in analytics stream")
                 self.service_status["analytics"] = "OFFLINE"
                 self.latest_data["analytics"] = None
-                self._analytics_ws = None
 
             if self.running:
                 await asyncio.sleep(reconnect_delay)
@@ -376,6 +378,10 @@ class StreamAggregator:
                 await asyncio.sleep(0.2)
                 now = time.time()
                 for name, last in list(self.last_seen.items()):
+                    if name == "analytics" and self._analytics_connected:
+                        # Connected but idle (nothing sent) is healthy; only unanswered frames count.
+                        if not (self._analytics_last_sent - last > timeout):
+                            continue
                     if self.service_status[name] == "ONLINE":
                         if (now - last) > timeout:
                             logger.warning(
@@ -385,6 +391,7 @@ class StreamAggregator:
                             )
                             self.service_status[name] = "OFFLINE"
                             self.latest_data[name] = None
+                            self.update_event.set()
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -406,11 +413,6 @@ class StreamAggregator:
             "telemetry": (
                 self.latest_data["telemetry"]
                 if self.service_status["telemetry"] == "ONLINE"
-                else None
-            ),
-            "vision": (
-                self.latest_data["vision"]
-                if self.service_status["vision"] == "ONLINE"
                 else None
             ),
             "analytics": (

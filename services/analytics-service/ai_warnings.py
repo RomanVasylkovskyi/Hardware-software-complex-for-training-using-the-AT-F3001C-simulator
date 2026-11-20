@@ -38,9 +38,17 @@ class FlightWarningsGenerator:
         self,
         telemetry: Dict[str, Any],
         target_ias_kt: Optional[float] = None,
+        is_airborne: Optional[bool] = None,
+        on_approach: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
         Evaluate active warnings for a single telemetry sample.
+
+        :param is_airborne: airborne state from FlightPhaseTracker. When omitted it is derived
+            from height above ground (X-Plane's on_runway flag is "over the runway surface",
+            not weight-on-wheels, so it is only a last resort).
+        :param on_approach: approach phase from FlightPhaseTracker. Glideslope and approach-speed
+            checks only apply on approach; when omitted, a descending aircraft below 1500 ft counts.
         """
         target_speed = target_ias_kt or telemetry.get("target_ias_kt") or self.default_target_ias_kt
 
@@ -55,13 +63,19 @@ class FlightWarningsGenerator:
         gs = self._get_float(telemetry, "groundspeed_kt", missing_fields)
         roll = self._get_float(telemetry, "roll_deg", missing_fields)
         flaps = self._get_float(telemetry, "flap_ratio", missing_fields)
-        on_runway = telemetry.get("on_runway")
-        is_airborne = True
-        if on_runway is not None:
-            try:
-                is_airborne = int(on_runway) == 0
-            except (ValueError, TypeError):
-                is_airborne = True
+        if is_airborne is None:
+            if alt_agl is not None:
+                is_airborne = alt_agl > 10.0
+            else:
+                on_runway = telemetry.get("on_runway")
+                try:
+                    is_airborne = on_runway is None or int(on_runway) == 0
+                except (ValueError, TypeError):
+                    is_airborne = True
+        if on_approach is None:
+            on_approach = bool(
+                is_airborne and alt_agl is not None and alt_agl <= 1500.0 and vsi is not None and vsi < 0.0
+            )
 
         # -------------------------------------------------------------
         # 1. SINK RATE Warning
@@ -138,7 +152,7 @@ class FlightWarningsGenerator:
                 "error": f"MISSING_TELEMETRY: {', '.join(missing_for_gs)}",
             }
         else:
-            if alt_agl <= 1500.0 and is_airborne and gs >= 45.0:
+            if on_approach and alt_agl <= 1500.0 and is_airborne and gs >= 45.0:
                 nominal_vsi = -5.2 * gs
                 deviation = abs(vsi - nominal_vsi)
                 is_unstable = deviation > 350.0
@@ -173,7 +187,8 @@ class FlightWarningsGenerator:
             over_vfe = flaps_val > 0.0 and ias > self.flap_vfe_limit_kt
 
             over_approach = (
-                alt_agl is not None
+                on_approach
+                and alt_agl is not None
                 and alt_agl <= 1000.0
                 and is_airborne
                 and ias > (target_speed + 15.0)
@@ -205,9 +220,9 @@ class FlightWarningsGenerator:
                 "error": "MISSING_TELEMETRY: roll_deg",
             }
         else:
-            excessive_bank = (
-                (alt_agl is not None and alt_agl <= 500.0 and is_airborne and abs(roll) > 7.0)
-                or (abs(roll) > 30.0)
+            excessive_bank = is_airborne and (
+                (alt_agl is not None and alt_agl <= 500.0 and abs(roll) > 7.0)
+                or abs(roll) > 30.0
             )
             warnings_detail["BANK ANGLE"] = {
                 "active": excessive_bank,

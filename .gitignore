@@ -63,11 +63,8 @@ ENV/
 *.sqlite3
 
 # ==============================================================================
-# Machine Learning / Video & Large Weights
+# Video & large media
 # ==============================================================================
-weights/*.pt
-weights/*.onnx
-runs/
 *.mp4
 *.avi
 *.mkv
@@ -83,3 +80,12 @@ ehthumbs.db
 .idea/
 *.swp
 *.swo
+
+# ==============================================================================
+# Local configuration & runtime data
+# ==============================================================================
+# Environment file with secrets (INSTRUCTOR_TOKEN). Template: .env.example
+.env
+.pytest_cache/
+**/terrarium_cache/
+data/uploads/

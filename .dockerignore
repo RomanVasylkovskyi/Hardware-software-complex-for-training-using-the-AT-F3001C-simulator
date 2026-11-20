@@ -1,0 +1,8 @@
+# Build context of gateway-service is the repo root: send only what its Dockerfile copies.
+.git
+.venv
+**/.venv
+**/__pycache__
+**/.pytest_cache
+data
+.env

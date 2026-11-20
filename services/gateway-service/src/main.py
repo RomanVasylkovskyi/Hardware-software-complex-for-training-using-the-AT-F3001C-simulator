@@ -1,16 +1,17 @@
 """
 FastAPI Gateway Aggregator Application.
-Unites telemetry-service, vision-service, and analytics-service.
+Unites telemetry-service and analytics-service.
 Mounts and serves the Instructor Panel avionics web interface.
 """
 
 import logging
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import httpx
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -36,10 +37,26 @@ aggregator = StreamAggregator(settings)
 ws_manager = WebSocketManager(settings, aggregator)
 
 
+def require_instructor(x_instructor_token: Optional[str] = Header(default=None)) -> None:
+    """
+    Guard for endpoints that change what every station sees (replay, live mode, uploads).
+    Students and tablets on the same Wi-Fi only need the read-only WebSocket stream.
+    """
+    expected = settings.INSTRUCTOR_TOKEN
+    if not expected:
+        return
+    if not x_instructor_token or not secrets.compare_digest(x_instructor_token, expected):
+        raise HTTPException(status_code=401, detail="Instructor token required")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager for startup and shutdown background tasks."""
     logger.info("Initializing Gateway Service on port %d...", settings.PORT)
+    if not settings.INSTRUCTOR_TOKEN:
+        logger.warning(
+            "INSTRUCTOR_TOKEN is not set: replay/live/upload control endpoints are open to every client on the network."
+        )
     await aggregator.start()
     await ws_manager.start()
     yield
@@ -59,7 +76,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,  # "*" with credentials is rejected by browsers; the panel is same-origin
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -87,6 +104,11 @@ async def get_system_status() -> Dict[str, Any]:
             "runway": settings.RUNWAY_IDENT,
         },
     }
+
+
+@app.get("/api/auth/check", summary="Validate Instructor Token", dependencies=[Depends(require_instructor)])
+async def auth_check() -> Dict[str, Any]:
+    return {"status": "ok", "auth_required": bool(settings.INSTRUCTOR_TOKEN)}
 
 
 @app.get("/api/telemetry", summary="Latest Unified Payload Snapshot")
@@ -121,7 +143,7 @@ async def list_replay_files() -> Dict[str, Any]:
         return {"files": [], "error": str(e)}
 
 
-@app.post("/api/replay/start", summary="Start Flight Data Replay")
+@app.post("/api/replay/start", summary="Start Flight Data Replay", dependencies=[Depends(require_instructor)])
 async def start_replay(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Proxy command to start replay engine on telemetry-service."""
     url = f"{settings.TELEMETRY_HTTP_URL}/replay/start"
@@ -137,32 +159,36 @@ async def start_replay(payload: Optional[Dict[str, Any]] = None) -> Dict[str, An
         raise HTTPException(status_code=502, detail=f"Failed to contact telemetry service: {e}")
 
 
-@app.post("/api/replay/stop", summary="Stop Flight Data Replay")
+@app.post("/api/replay/stop", summary="Stop Flight Data Replay", dependencies=[Depends(require_instructor)])
 async def stop_replay() -> Dict[str, Any]:
     """Proxy command to stop replay engine on telemetry-service."""
     url = f"{settings.TELEMETRY_HTTP_URL}/replay/stop"
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.post(url)
-            return resp.json()
-    except Exception as e:
+    except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Failed to contact telemetry service: {e}")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return resp.json()
 
 
-@app.post("/api/mode/live", summary="Switch to Live UDP Mode")
-@app.post("/api/telemetry/mode/live", summary="Switch to Live UDP Mode (alias)")
+@app.post("/api/mode/live", summary="Switch to Live UDP Mode", dependencies=[Depends(require_instructor)])
+@app.post("/api/telemetry/mode/live", summary="Switch to Live UDP Mode (alias)", dependencies=[Depends(require_instructor)])
 async def switch_mode_live() -> Dict[str, Any]:
     """Proxy command to switch telemetry-service to online X-Plane UDP ingestion."""
     url = f"{settings.TELEMETRY_HTTP_URL}/telemetry/mode/live"
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.post(url)
-            return resp.json()
-    except Exception as e:
+    except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Failed to switch to live mode: {e}")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return resp.json()
 
 
-@app.post("/api/replay/upload", summary="Upload Flight File and Start Replay")
+@app.post("/api/replay/upload", summary="Upload Flight File and Start Replay", dependencies=[Depends(require_instructor)])
 async def upload_flight_file(
     file: UploadFile = File(...),
     start_immediately: bool = Form(True),
@@ -172,8 +198,9 @@ async def upload_flight_file(
     """Proxy multipart file upload from instructor station to telemetry-service."""
     url = f"{settings.TELEMETRY_HTTP_URL}/replay/upload"
     try:
-        file_bytes = await file.read()
-        files = {"file": (file.filename, file_bytes, file.content_type or "application/octet-stream")}
+        # Stream the spooled upload instead of loading a 26 MB Data.txt into memory twice.
+        await file.seek(0)
+        files = {"file": (file.filename, file.file, file.content_type or "application/octet-stream")}
         data = {
             "start_immediately": "true" if start_immediately else "false",
             "speed": str(speed),

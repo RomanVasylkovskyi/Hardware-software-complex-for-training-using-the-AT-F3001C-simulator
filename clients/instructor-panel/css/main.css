@@ -341,20 +341,73 @@ header.ios-header, .standalone-header {
   to { box-shadow: 0 0 14px var(--avionics-amber); }
 }
 
-/* ================= FLOATING HUD ALERT TOAST COLUMN (TOP-RIGHT) ================= */
-.hud-alerts-column {
-  position: fixed;
-  top: 60px;
-  right: 10px;
-  z-index: 10000;
+/* ================= HEADER CENTER: ANNUNCIATOR STRIP + HEALTH ================= */
+.hdr-center {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  height: 56px;
+  overflow: hidden;
+}
+
+.hdr-health {
+  display: flex;
+  align-items: center;
   gap: 4px;
+  flex-shrink: 0;
+}
+
+.hdr-conn {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: #000000;
+  background-color: #eab308;
+  white-space: nowrap;
+}
+
+.hdr-metric {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  min-width: 46px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.hdr-approach {
+  padding: 2px 6px;
+  font-size: 0.66rem;
+  white-space: nowrap;
+}
+
+/* Active warnings: a single row in the header, newest last, overflow clipped */
+.hud-alerts-column {
+  position: static;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  overflow: hidden;
   pointer-events: none;
-  max-width: 260px;
-  max-height: calc(100vh - 75px);
-  overflow-y: visible;
+}
+
+/* Most severe first: when the strip is too narrow, the clipped badges are the cautions */
+.hud-alerts-column .hud-alert-toast.master-warning { order: 0; }
+.hud-alerts-column .hud-alert-toast.master-caution { order: 1; }
+.hud-alerts-column .hud-alert-toast.normal { order: 2; }
+.hud-alert-toast .warn-badge {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hud-alert-toast {
@@ -366,25 +419,20 @@ header.ios-header, .standalone-header {
   border-radius: 3px;
   background: rgba(8, 14, 24, 0.98);
   border: 1px solid #1a2a44;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.85);
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-              opacity 0.25s ease,
-              margin-bottom 0.25s ease;
-  transform: translateX(0);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+  transform: translateY(0);
   opacity: 1;
-  max-width: 260px;
+  flex-shrink: 0;
   white-space: nowrap;
 }
 
-/* Light / smooth slide-in from right */
 .hud-alert-toast.toast-entering {
-  transform: translateX(120%);
+  transform: translateY(-120%);
   opacity: 0;
 }
 
-/* Light / smooth slide-out to right */
 .hud-alert-toast.toast-exiting {
-  transform: translateX(120%);
+  transform: translateY(-120%);
   opacity: 0;
   pointer-events: none;
 }
@@ -1149,32 +1197,6 @@ main.dashboard-grid {
   box-shadow: 0 0 6px var(--avionics-red);
 }
 
-/* Vision HUD */
-.hud-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  font-size: 0.72rem;
-}
-
-.hud-item {
-  background: #080d17;
-  border: 1px solid #1e293b;
-  padding: 6px;
-  border-radius: 4px;
-}
-
-.hud-lbl {
-  color: var(--text-dim);
-  font-size: 0.68rem;
-}
-
-.hud-val {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  margin-top: 2px;
-}
-
 .text-ok { color: var(--avionics-green); }
 .text-warn { color: var(--avionics-yellow); }
 .text-cyan { color: var(--avionics-cyan); }
@@ -1285,10 +1307,6 @@ main.dashboard-grid {
   display: none !important;
 }
 
-/* Temporarily disabled touchdown score modal as requested */
-#landing-report-modal {
-  display: none !important;
-}
 
 /* ================= SINGLE-PAGE APPLICATION (SPA) VIEW MODES ================= */
 #card-settings {
@@ -1976,7 +1994,7 @@ body.mode-settings #card-settings {
     max-height: 140px !important;
   }
 
-  /* Flight Safety & Vision on Mobile */
+  /* Flight Safety on Mobile */
   .analysis-container,
   body.mode-safety .analysis-container {
     grid-template-columns: 1fr !important;
@@ -2009,24 +2027,6 @@ body.mode-settings #card-settings {
   .ils-dot {
     width: 5px !important;
     height: 5px !important;
-  }
-
-  .hud-grid {
-    grid-template-columns: 1fr 1fr !important;
-    gap: 4px !important;
-    font-size: 0.68rem !important;
-  }
-
-  .hud-item {
-    padding: 4px !important;
-  }
-
-  .hud-lbl {
-    font-size: 0.64rem !important;
-  }
-
-  .hud-val {
-    font-size: 0.70rem !important;
   }
 
   /* Panel Header & Controls on Mobile */
@@ -2266,7 +2266,7 @@ body.mode-settings #card-settings {
 
 /* ================= TELEMETRY SOURCE & SETTINGS PAGE (SINGLE VIEW WITH MODE DROPDOWN) ================= */
 body.mode-settings .hud-alerts-column {
-  display: none !important;
+  visibility: hidden;
 }
 
 .settings-page-body-flat {
@@ -3002,3 +3002,46 @@ body.mode-settings .hud-alerts-column {
 
 
 
+
+
+/* Narrower screens (laptops, 10-11" tablets): free header space for the annunciator strip,
+   which has priority over decorative labels and healthy-service indicators. */
+@media (max-width: 1366px) {
+  .hdr-metric,
+  .hdr-conn,
+  .hdr-source-label,
+  .hdr-audio-btn span { display: none; }
+  .service-pill { padding: 2px 4px; font-size: 0.6rem; }
+
+  .panel-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .panel-title svg { flex-shrink: 0; }
+  .panel-controls { flex-shrink: 0; }
+  #nd-layer-select { max-width: 170px; text-overflow: ellipsis; }
+}
+@media (max-width: 1150px) {
+  /* Only failing services are worth header space here */
+  .service-pill.online { display: none; }
+}
+
+.rpt-meta {
+  margin-right: auto;
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+/* Leaflet bottom controls (attribution) sit above the ND softkey bar, not on top of it */
+#nd-map .leaflet-bottom {
+  bottom: 34px;
+}
+#nd-map .leaflet-control-attribution {
+  font-size: 9px;
+  line-height: 1.2;
+}

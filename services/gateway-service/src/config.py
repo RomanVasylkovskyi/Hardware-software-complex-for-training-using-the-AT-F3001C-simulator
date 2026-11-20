@@ -17,16 +17,22 @@ class Settings(BaseSettings):
     TELEMETRY_WS_URL: str = "ws://telemetry-service:8001/ws/telemetry"
     TELEMETRY_HTTP_URL: str = "http://telemetry-service:8001"
 
-    VISION_WS_URL: str = "ws://vision-service:8002/ws/vision"
-    VISION_HTTP_URL: str = "http://vision-service:8002"
 
     ANALYTICS_WS_URL: str = "ws://analytics-service:8003/ws/analytics"
     ANALYTICS_HTTP_URL: str = "http://analytics-service:8003"
 
-    # Streaming and timing parameters
-    BROADCAST_RATE_HZ: float = 25.0  # 25 Hz -> ~40ms period (<50ms latency)
+    # Streaming and timing parameters.
+    # Clients get a payload as soon as new upstream data arrives, at most BROADCAST_RATE_HZ
+    # times per second, and at least every BROADCAST_HEARTBEAT_SEC (status refresh).
+    BROADCAST_RATE_HZ: float = 30.0
+    BROADCAST_HEARTBEAT_SEC: float = 0.25
     HEARTBEAT_TIMEOUT_SEC: float = 1.2  # Max seconds before marking upstream as OFFLINE
     RECONNECT_DELAY_SEC: float = 1.5
+    ANALYTICS_QUEUE_SIZE: int = 500
+
+    # Shared secret for control endpoints (replay start/stop/upload, live mode).
+    # Empty = control endpoints are open (development only; a warning is logged).
+    INSTRUCTOR_TOKEN: str = ""
 
     # Static Web Client Path
     STATIC_DIR: str = ""

@@ -321,13 +321,14 @@ class TelemetryParser:
         gs_kt = ch3[3] if len(ch3) > 3 else None
         if gs_kt is not None and gs_kt < 0.0:
             gs_kt = 0.0
-        ias_mph = ch3[4] if len(ch3) > 4 else None
+        # X-Plane 11 row 3: kias, keas, ktas, ktgs, (blank), mph, mphas, mphgs
+        ias_mph = ch3[5] if len(ch3) > 5 else None
         if ias_mph is not None and ias_mph < 0.0:
             ias_mph = 0.0
-        tas_mph = ch3[5] if len(ch3) > 5 else None
+        tas_mph = ch3[6] if len(ch3) > 6 else None
         if tas_mph is not None and tas_mph < 0.0:
             tas_mph = 0.0
-        gs_mph = ch3[6] if len(ch3) > 6 else None
+        gs_mph = ch3[7] if len(ch3) > 7 else None
         if gs_mph is not None and gs_mph < 0.0:
             gs_mph = 0.0
 
@@ -407,34 +408,11 @@ class TelemetryParser:
         else:
             dyn_quality = ChannelQuality.NO_SIGNAL
 
-        # Vertical speed:
-        # In native X-Plane 11 UDP broadcast, VVI is transmitted in ch4[2] (ft/min).
-        # In custom replays or legacy packets, VVI may be in ch4[1].
-        # If ch4[1] is valid, use ch4[1]. If ch4[1] is None but ch4[2] is valid, use ch4[2].
-        vsi_val: Optional[float] = None
-        if len(ch4) > 1 and ch4[1] is not None:
-            vsi_val = ch4[1]
-        elif len(ch4) > 2 and ch4[2] is not None:
-            vsi_val = ch4[2]
-
-        # Normal G-load:
-        # In native X-Plane 11 UDP, G-normal is in ch4[4] (~1.0 G level).
-        # In legacy / replay packets where ch4[1] was VVI, G-normal was in ch4[2].
-        g_nrml_val: Optional[float] = None
-        if len(ch4) > 1 and ch4[1] is not None:
-            g_nrml_val = ch4[2] if len(ch4) > 2 else None
-        elif len(ch4) > 4 and ch4[4] is not None:
-            g_nrml_val = ch4[4]
-        elif len(ch4) > 2 and ch4[2] is not None and abs(ch4[2]) < 10.0:
-            g_nrml_val = ch4[2]
-
-        # Axial & Side G-loads:
-        if len(ch4) > 1 and ch4[1] is not None:
-            g_axil_val = ch4[3] if len(ch4) > 3 else None
-            g_side_val = ch4[4] if len(ch4) > 4 else None
-        else:
-            g_axil_val = ch4[5] if len(ch4) > 5 else None
-            g_side_val = ch4[6] if len(ch4) > 6 else None
+        # X-Plane 11 row 4: mach, (blank), vvi fpm, (blank), g normal, g axial, g side, (blank)
+        vsi_val = ch4[2] if len(ch4) > 2 else None
+        g_nrml_val = ch4[4] if len(ch4) > 4 else None
+        g_axil_val = ch4[5] if len(ch4) > 5 else None
+        g_side_val = ch4[6] if len(ch4) > 6 else None
 
         dynamics = Dynamics(
             mach_number=ch4[0] if len(ch4) > 0 else None,
@@ -472,7 +450,7 @@ class TelemetryParser:
             elevator_trim=ch13[0] if len(ch13) > 0 else None,
             aileron_trim=ch13[1] if len(ch13) > 1 else None,
             rudder_trim=ch13[2] if len(ch13) > 2 else None,
-            flap_ratio=ch13[3] if len(ch13) > 3 else None,
+            flap_ratio=(ch13[4] if len(ch13) > 4 and ch13[4] is not None else (ch13[3] if len(ch13) > 3 else None)),
             slat_ratio=ch13[5] if len(ch13) > 5 else None,
             speedbrake_ratio=ch13[6] if len(ch13) > 6 else None,
             gear_ratio=ch14[0] if len(ch14) > 0 else None,
@@ -480,36 +458,11 @@ class TelemetryParser:
             last_update=now_dt if ctrl_quality == ChannelQuality.GOOD else None,
         )
 
-        # ----------------- Channels 25, 26, 37, 39, 43, 45, 46, 47, 49, 50, 62: Engine -----------------
-        ch25_quality = self._determine_channel_quality(25, now)
-        ch26_quality = self._determine_channel_quality(26, now)
-        ch37_quality = self._determine_channel_quality(37, now)
-        ch39_quality = self._determine_channel_quality(39, now)
-        ch43_quality = self._determine_channel_quality(43, now)
-        ch45_quality = self._determine_channel_quality(45, now)
-        ch46_quality = self._determine_channel_quality(46, now)
-        ch47_quality = self._determine_channel_quality(47, now)
-        ch49_quality = self._determine_channel_quality(49, now)
-        ch50_quality = self._determine_channel_quality(50, now)
-        ch62_quality = self._determine_channel_quality(62, now)
-
-        ch25 = self._raw_channels.get(25, [None] * 8)
-        ch26 = self._raw_channels.get(26, [None] * 8)
-        ch37 = self._raw_channels.get(37, [None] * 8)
-        ch39 = self._raw_channels.get(39, [None] * 8)
-        ch43 = self._raw_channels.get(43, [None] * 8)
-        ch45 = self._raw_channels.get(45, [None] * 8)
-        ch46 = self._raw_channels.get(46, [None] * 8)
-        ch47 = self._raw_channels.get(47, [None] * 8)
-        ch49 = self._raw_channels.get(49, [None] * 8)
-        ch50 = self._raw_channels.get(50, [None] * 8)
-        ch62 = self._raw_channels.get(62, [None] * 8)
-
-        eng_qualities = (
-            ch25_quality, ch26_quality, ch37_quality, ch39_quality,
-            ch43_quality, ch45_quality, ch46_quality, ch47_quality,
-            ch49_quality, ch50_quality, ch62_quality
-        )
+        # ----------------- Engine (X-Plane 11 rows 25, 26, 37, 45, 47, 49, 50, 62) -----------------
+        # Units as X-Plane 11 transmits them (verified against a recorded Data.txt):
+        # 45 FF gal/h, 47 EGT deg F, 49 oil pressure psi, 50 oil temperature deg F, 62 fuel per tank gal.
+        engine_channels = (25, 26, 37, 45, 47, 49, 50, 62)
+        eng_qualities = [self._determine_channel_quality(ch, now) for ch in engine_channels]
         if any(q == ChannelQuality.GOOD for q in eng_qualities):
             eng_quality = ChannelQuality.GOOD
         elif any(q == ChannelQuality.STALE for q in eng_qualities):
@@ -517,67 +470,27 @@ class TelemetryParser:
         else:
             eng_quality = ChannelQuality.NO_SIGNAL
 
-        # Oil Pressure (PSI):
-        # Native X-Plane 11 sends oil pressure in ch49[0] (~80 PSI).
-        # Replay/legacy sends in ch39[1].
-        oil_press_val: Optional[float] = None
-        if len(ch49) > 0 and ch49[0] is not None and ch49[0] > 0.05:
-            oil_press_val = ch49[0]
-        elif len(ch39) > 1 and ch39[1] is not None and ch39[1] > 0.05:
-            oil_press_val = ch39[1]
-        elif len(ch49) > 0 and ch49[0] is not None:
-            oil_press_val = ch49[0]
-        elif len(ch39) > 1 and ch39[1] is not None:
-            oil_press_val = ch39[1]
+        def first(channel: int, index: int = 0) -> Optional[float]:
+            values = self._raw_channels.get(channel, [])
+            return values[index] if len(values) > index else None
 
-        # Oil Temperature (°C):
-        # Native X-Plane 11 sends oil temp in ch50[0] in °F (~175 °F).
-        # Convert °F to °C: (F - 32) * 5 / 9.
-        # Replay/legacy sends in ch39[0] in °C.
-        oil_temp_val: Optional[float] = None
-        if len(ch50) > 0 and ch50[0] is not None and ch50[0] > 32.0:
-            oil_temp_val = (ch50[0] - 32.0) * 5.0 / 9.0
-        elif len(ch39) > 0 and ch39[0] is not None and ch39[0] > 0.05:
-            oil_temp_val = ch39[0]
-        elif len(ch50) > 0 and ch50[0] is not None:
-            oil_temp_val = (ch50[0] - 32.0) * 5.0 / 9.0
-        elif len(ch39) > 0 and ch39[0] is not None:
-            oil_temp_val = ch39[0]
+        def f_to_c(value: Optional[float]) -> Optional[float]:
+            return None if value is None else round((value - 32.0) * 5.0 / 9.0, 1)
 
-        # Exhaust Gas Temperature EGT (°C):
-        # Native X-Plane 11 sends EGT in ch46[0] in °C (~485 °C) or ch47[0] in °F (~880 °F).
-        # ch43[0] is ambient/outside air temperature (~24 °C), only fallback if no EGT channel.
-        egt_val: Optional[float] = None
-        if len(ch46) > 0 and ch46[0] is not None and ch46[0] > 50.0:
-            egt_val = ch46[0]
-        elif len(ch47) > 0 and ch47[0] is not None and ch47[0] > 150.0:
-            egt_val = (ch47[0] - 32.0) * 5.0 / 9.0
-        elif len(ch43) > 0 and ch43[0] is not None and ch43[0] > 50.0:
-            egt_val = ch43[0]
-        elif len(ch46) > 0 and ch46[0] is not None:
-            egt_val = ch46[0]
-        elif len(ch43) > 0 and ch43[0] is not None:
-            egt_val = ch43[0]
+        ch25 = self._raw_channels.get(25, [None] * 8)
+        ch26 = self._raw_channels.get(26, [None] * 8)
+        ch37 = self._raw_channels.get(37, [None] * 8)
 
-        # Fuel Flow (GPH):
-        # Native X-Plane 11 sends fuel flow in ch45[0] (e.g. ~12 GPH).
-        # Replay may send in ch47[0] (small value < 50 GPH). Note: ch47[0] in live X-Plane is EGT in °F (>500)!
-        fuel_flow_val: Optional[float] = None
-        if len(ch45) > 0 and ch45[0] is not None and ch45[0] > 0.01:
-            fuel_flow_val = ch45[0]
-        elif len(ch47) > 0 and ch47[0] is not None and 0.01 < ch47[0] < 50.0:
-            fuel_flow_val = ch47[0]
-        elif len(ch45) > 0 and ch45[0] is not None:
-            fuel_flow_val = ch45[0]
+        oil_press_val = first(49)
+        oil_temp_val = f_to_c(first(50))
+        egt_val = f_to_c(first(47))
+        fuel_flow_val = first(45)
 
-        # Fuel Quantity (GAL):
-        # In X-Plane 11, ch62[0] is left tank and ch62[1] is right tank. Total = sum of tanks.
-        # In single-value replays, ch62[0] is total and ch62[1] is 0 or None.
-        fuel_qty_val: Optional[float] = None
-        if len(ch62) > 1 and ch62[0] is not None and ch62[1] is not None and ch62[1] > 0.05:
-            fuel_qty_val = ch62[0] + ch62[1]
-        elif len(ch62) > 0 and ch62[0] is not None:
-            fuel_qty_val = ch62[0]
+        tank1, tank2 = first(62, 0), first(62, 1)
+        if tank1 is None and tank2 is None:
+            fuel_qty_val: Optional[float] = None
+        else:
+            fuel_qty_val = round((tank1 or 0.0) + (tank2 or 0.0), 2)
 
         engine = Engine(
             throttle_ratio=ch25[0] if len(ch25) > 0 else None,
@@ -593,110 +506,82 @@ class TelemetryParser:
         )
 
         # ----------------- Channel 0 & Clock: FlightTimes -----------------
-        ch0_quality = self._determine_channel_quality(0, now)
+        # X-Plane 11 row 0: f-act, f-sim, ...; row 1: real, totl, missn, timer, ...
         ch0 = self._raw_channels.get(0, [None] * 8)
+        ch1 = self._raw_channels.get(1, [None] * 8)
+        ch0_quality = self._determine_channel_quality(0, now)
+        ch1_quality = self._determine_channel_quality(1, now)
+        ft_quality = ChannelQuality.GOOD if ChannelQuality.GOOD in (ch0_quality, ch1_quality) else (
+            ChannelQuality.STALE if ChannelQuality.STALE in (ch0_quality, ch1_quality) else ChannelQuality.NO_SIGNAL
+        )
         flight_times = FlightTimes(
             frame_rate_fps=ch0[0] if len(ch0) > 0 else None,
-            total_time_sec=ch0[2] if len(ch0) > 2 else None,
-            quality=ch0_quality,
-            last_update=now_dt if ch0_quality == ChannelQuality.GOOD else None,
+            total_time_sec=ch1[1] if len(ch1) > 1 else None,
+            quality=ft_quality,
+            last_update=now_dt if ft_quality == ChannelQuality.GOOD else None,
         )
 
-        # ----------------- Channels 21, 97, 102, 103, 108, 117, 118, 119: Autopilot -----------------
-        ch21_quality = self._determine_channel_quality(21, now)
-        ch103_quality = self._determine_channel_quality(103, now)
-        ch108_quality = self._determine_channel_quality(108, now)
-        ch117_quality = self._determine_channel_quality(117, now)
-        ch118_quality = self._determine_channel_quality(118, now)
-        ch119_quality = self._determine_channel_quality(119, now)
+        # ----------------- Autopilot / Flight Director / GPS (rows 97, 102, 103, 108, 117, 118) -----------------
+        # Only rows whose meaning is known are read. Row 21 (local X/Y/Z position in metres) and
+        # row 119 were previously used as fallbacks and produced plausible-looking but wrong values.
+        ap_channels = (108, 117, 118)
+        ap_qualities = [self._determine_channel_quality(ch, now) for ch in ap_channels]
+        if any(q == ChannelQuality.GOOD for q in ap_qualities):
+            ap_quality = ChannelQuality.GOOD
+        elif any(q == ChannelQuality.STALE for q in ap_qualities):
+            ap_quality = ChannelQuality.STALE
+        else:
+            ap_quality = ChannelQuality.NO_SIGNAL
 
-        ch21 = self._raw_channels.get(21, [None] * 8)
         ch97 = self._raw_channels.get(97, [None] * 8)
         ch102 = self._raw_channels.get(102, [None] * 8)
         ch103 = self._raw_channels.get(103, [None] * 8)
         ch108 = self._raw_channels.get(108, [None] * 8)
         ch117 = self._raw_channels.get(117, [None] * 8)
         ch118 = self._raw_channels.get(118, [None] * 8)
-        ch119 = self._raw_channels.get(119, [None] * 8)
 
-        ap_quality = ChannelQuality.NO_SIGNAL
-        if any(q == ChannelQuality.GOOD for q in (ch21_quality, ch108_quality, ch117_quality, ch118_quality, ch119_quality)):
-            ap_quality = ChannelQuality.GOOD
-        elif any(q == ChannelQuality.STALE for q in (ch21_quality, ch108_quality, ch117_quality, ch118_quality, ch119_quality)):
-            ap_quality = ChannelQuality.STALE
+        def at(values: List[Optional[float]], index: int) -> Optional[float]:
+            return values[index] if len(values) > index else None
 
-        # FD commands (ch108[2]/ch108[3] or ch118[7]/ch118[6] in X-Plane 11; fallback to ch21)
-        fd_p = None
-        if len(ch108) > 2 and ch108[2] is not None and abs(ch108[2]) <= 90.0:
-            fd_p = ch108[2]
-        elif len(ch118) > 7 and ch118[7] is not None and abs(ch118[7]) <= 90.0:
-            fd_p = ch118[7]
-        elif len(ch21) > 0 and ch21[0] is not None and abs(ch21[0]) <= 90.0:
-            fd_p = ch21[0]
+        # Row 108: (?), _fdir,_mode (0 off, 1 FD, 2 FD+AP), _fdir,_ptch, _fdir,_roll
+        fd_mode_raw = at(ch108, 1)
+        fd_p = at(ch108, 2)
+        if fd_p is not None and abs(fd_p) > 90.0:
+            fd_p = None
+        fd_r = at(ch108, 3)
+        if fd_r is not None and abs(fd_r) > 180.0:
+            fd_r = None
 
-        fd_r = None
-        if len(ch108) > 3 and ch108[3] is not None and abs(ch108[3]) <= 180.0:
-            fd_r = ch108[3]
-        elif len(ch118) > 6 and ch118[6] is not None and abs(ch118[6]) <= 180.0:
-            fd_r = ch118[6]
-        elif len(ch21) > 1 and ch21[1] is not None and abs(ch21[1]) <= 180.0:
-            fd_r = ch21[1]
+        ap_engaged_val: Optional[bool] = None if fd_mode_raw is None else fd_mode_raw >= 1.5
+        fd_active_val: Optional[bool] = None if fd_mode_raw is None else fd_mode_raw >= 0.5
 
-        # Autopilot master engagement & FD switch (ch108[1] is _fdir,_mode: 0=off, 1=FD, 2=AP in X-Plane; fallback to ch119)
-        ap_mode_raw = ch108[1] if (len(ch108) > 1 and ch108[1] is not None) else (ch119[1] if len(ch119) > 1 else None)
-        fd_mode_raw = ch108[1] if (len(ch108) > 1 and ch108[1] is not None) else (ch119[0] if len(ch119) > 0 else None)
+        # Row 117: (?), _mode,hding (1 HDG, 2 NAV), _mode,__alt (0 off, >0 vertical mode active)
+        hdg_val = at(ch117, 1)
+        hdg_mode_val: Optional[bool] = None if hdg_val is None else abs(hdg_val - 1.0) < 0.1
+        nav_mode_val: Optional[bool] = None if hdg_val is None else abs(hdg_val - 2.0) < 0.1
+        alt_val = at(ch117, 2)
+        alt_mode_val: Optional[bool] = None if alt_val is None else alt_val > 0.0
+        app_mode_val: Optional[bool] = None  # no verified X-Plane 11 row for approach mode
 
-        ap_engaged_val = bool(ap_mode_raw is not None and ap_mode_raw >= 1.5)
-        fd_active_val = bool(fd_mode_raw is not None and fd_mode_raw >= 0.5)
-        if ap_engaged_val:
-            fd_active_val = True
+        # Row 118: __set,hding, (?), __set,__vvi, _dial,__alt, ..., __use,__alt
+        tgt_hdg = at(ch118, 0)
+        tgt_vvi = at(ch118, 2)
+        tgt_alt = at(ch118, 3)
+        if tgt_alt is None or tgt_alt <= 0:
+            used_alt = at(ch118, 5)
+            tgt_alt = used_alt if used_alt is not None and used_alt > 0 else None
+        tgt_spd = None  # no verified X-Plane 11 row for the selected airspeed
 
-        # Lateral mode: ch117[1] is _mode,hding in X-Plane (1=HDG, 2=NAV); fallback to ch119[3] / ch119[4]
-        hdg_val = ch117[1] if (len(ch117) > 1 and ch117[1] is not None) else (ch119[3] if len(ch119) > 3 else None)
-        hdg_mode_val = bool(hdg_val is not None and abs(hdg_val - 1.0) < 0.1)
-        nav_mode_val = bool(hdg_val is not None and abs(hdg_val - 2.0) < 0.1) or bool(len(ch119) > 4 and ch119[4] is not None and ch119[4] >= 0.5)
-        app_mode_val = bool(len(ch119) > 5 and ch119[5] is not None and ch119[5] >= 0.5)
+        tgt_crs = at(ch102, 2)
+        if tgt_crs is None:
+            tgt_crs = at(ch97, 2)
 
-        # Vertical mode: ch117[2] is _mode,__alt in X-Plane (6=ALT hold, 2=VVI, 1=pitch); fallback to ch119[2]
-        alt_val = ch117[2] if (len(ch117) > 2 and ch117[2] is not None) else (ch119[2] if len(ch119) > 2 else None)
-        alt_mode_val = bool(alt_val is not None and alt_val > 0.0)
-
-        # Autopilot reference targets
-        # In Garmin G1000 X-Plane 11:
-        # ch118[3] is _dial,__alt (dialed altitude bug set by pilot on G1000, e.g. 3000 FT)
-        # ch118[5] is __use,__alt (active captured altitude hold, e.g. 1000 FT)
-        # ch118[2] is __set,__vvi (selected target vertical speed / climb rate, e.g. 500 FPM)
-        tgt_alt = None
-        if len(ch118) > 3 and ch118[3] is not None and ch118[3] > 0:
-            tgt_alt = ch118[3]
-        elif len(ch118) > 5 and ch118[5] is not None and ch118[5] > 0:
-            tgt_alt = ch118[5]
-        elif len(ch117) > 0 and ch117[0] is not None and ch117[0] > 0:
-            tgt_alt = ch117[0]
-
-        # Selected vertical speed / climb rate in FPM (ch118[2] is __set,__vvi; fallback ch118[4], ch117[1])
-        tgt_vvi = None
-        if len(ch118) > 2 and ch118[2] is not None and abs(ch118[2]) > 0:
-            tgt_vvi = ch118[2]
-        elif len(ch118) > 4 and ch118[4] is not None and abs(ch118[4]) > 0:
-            tgt_vvi = ch118[4]
-        elif len(ch117) > 1 and ch117[1] is not None and abs(ch117[1]) > 0:
-            tgt_vvi = ch117[1]
-
-        tgt_spd = ch117[2] if len(ch117) > 2 else None
-
-        # Autopilot nav & heading (ch118[0] is heading bug; ch102[2] or ch97[2] or ch118[1] is course)
-        tgt_hdg = ch118[0] if len(ch118) > 0 else None
-        tgt_crs = ch102[2] if (len(ch102) > 2 and ch102[2] is not None) else (
-            ch97[2] if len(ch97) > 2 and ch97[2] is not None else (
-                ch118[1] if (len(ch118) > 1 and ch118[1] is not None) else None
-            )
-        )
-
-        # GPS / Waypoint guidance (ch103: index 2 is distance NM, index 3 is mag bearing deg)
-        nav_dist = round(ch103[2], 1) if (len(ch103) > 2 and ch103[2] is not None and ch103[2] > 0) else None
-        nav_brg = round(ch103[3], 0) if (len(ch103) > 3 and ch103[3] is not None) else None
-        nav_ident = getattr(self, "airport_icao", "UKLL") or "UKLL"
+        # Row 103 (GPS): index 2 distance NM, index 3 magnetic bearing
+        nav_dist_raw = at(ch103, 2)
+        nav_dist = round(nav_dist_raw, 1) if nav_dist_raw is not None and nav_dist_raw > 0 else None
+        nav_brg_raw = at(ch103, 3)
+        nav_brg = round(nav_brg_raw, 0) if nav_brg_raw is not None else None
+        nav_ident = (getattr(self, "airport_icao", None) or None) if nav_dist is not None else None
 
         autopilot = Autopilot(
             ap_engaged=ap_engaged_val,

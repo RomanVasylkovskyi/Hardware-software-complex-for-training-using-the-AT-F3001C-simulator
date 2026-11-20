@@ -23,6 +23,8 @@ logger = logging.getLogger("gateway.ws_manager")
 
 
 class WebSocketManager:
+    SEND_TIMEOUT_SEC = 0.5
+
     def __init__(self, settings: Settings, aggregator: StreamAggregator):
         self.settings = settings
         self.aggregator = aggregator
@@ -116,50 +118,55 @@ class WebSocketManager:
 
     async def _broadcast_loop(self) -> None:
         """
-        Broadcasting loop executing at 20-30 Hz (default 25 Hz / 40ms interval).
-        Measures execution time to guarantee low latency (<50ms).
+        Push the unified payload as soon as fresh upstream data arrives (no polling delay),
+        capped at BROADCAST_RATE_HZ, with a heartbeat every BROADCAST_HEARTBEAT_SEC so that
+        OFFLINE/stale transitions still reach the clients.
         """
-        target_hz = max(1.0, self.settings.BROADCAST_RATE_HZ)
-        period = 1.0 / target_hz
+        min_interval = 1.0 / max(1.0, self.settings.BROADCAST_RATE_HZ)
+        heartbeat = max(min_interval, self.settings.BROADCAST_HEARTBEAT_SEC)
+        loop = asyncio.get_running_loop()
+        last_sent = 0.0
+        update_event = self.aggregator.update_event
 
         while self.running:
-            start_tick = time.perf_counter()
+            try:
+                await asyncio.wait_for(update_event.wait(), timeout=heartbeat)
+            except asyncio.TimeoutError:
+                pass
+            except asyncio.CancelledError:
+                break
+            update_event.clear()
 
-            # Only do serialization and network I/O if there are connected clients or for diagnostics
-            if self.active_connections:
+            wait = min_interval - (loop.time() - last_sent)
+            if wait > 0:
+                try:
+                    await asyncio.sleep(wait)
+                except asyncio.CancelledError:
+                    break
+
+            clients = list(self.active_connections)
+            if clients:
                 payload = self.aggregator.get_unified_payload()
-                payload["type"] = "telemetry_snapshot"
-                payload["connected_clients"] = len(self.active_connections)
+                payload["connected_clients"] = len(clients)
                 payload["measured_hz"] = round(self.actual_hz, 1)
-
                 try:
                     payload_json = json.dumps(payload, separators=(",", ":"))
-                except Exception as json_err:
+                except (TypeError, ValueError) as json_err:
                     logger.error("Failed to serialize unified payload: %s", json_err)
                     payload_json = None
 
                 if payload_json:
-                    # Broadcast to all clients concurrently
-                    dead_clients: list[WebSocket] = []
                     results = await asyncio.gather(
-                        *[
-                            self._send_safe(ws, payload_json)
-                            for ws in list(self.active_connections)
-                        ],
+                        *[self._send_safe(ws, payload_json) for ws in clients],
                         return_exceptions=True,
                     )
-
-                    for ws, res in zip(list(self.active_connections), results):
-                        if res is False or isinstance(res, Exception):
-                            dead_clients.append(ws)
-
-                    for dead_ws in dead_clients:
-                        self.active_connections.discard(dead_ws)
+                    for ws, res in zip(clients, results):
+                        if res is not True:
+                            self.active_connections.discard(ws)
+            last_sent = loop.time()
 
             self.broadcast_ticks += 1
             self._hz_tick_count += 1
-
-            # Update running Hz calculation every second
             now = time.time()
             dt = now - self._hz_last_time
             if dt >= 1.0:
@@ -167,23 +174,20 @@ class WebSocketManager:
                 self._hz_tick_count = 0
                 self._hz_last_time = now
 
-            elapsed = time.perf_counter() - start_tick
-            sleep_time = max(0.001, period - elapsed)
-            try:
-                await asyncio.sleep(sleep_time)
-            except asyncio.CancelledError:
-                break
-
     async def _send_safe(self, ws: WebSocket, text: str) -> bool:
-        """Send message safely; returns False if connection is broken."""
+        """Send with a timeout: one stalled tablet must not hold back every other client."""
         try:
-            await ws.send_text(text)
+            await asyncio.wait_for(ws.send_text(text), timeout=self.SEND_TIMEOUT_SEC)
             return True
-        except (WebSocketDisconnect, RuntimeError, ConnectionResetError, OSError):
-            return False
-        except Exception as e:
-            logger.debug("Send failed to client: %s", e)
-            return False
+        except asyncio.TimeoutError:
+            logger.warning("Dropping WebSocket client: send timed out")
+        except (WebSocketDisconnect, RuntimeError, ConnectionError) as e:
+            logger.info("Dropping WebSocket client: %s", e)
+        try:
+            await ws.close(code=1011)
+        except (RuntimeError, ConnectionError):
+            pass
+        return False
 
     def get_stats(self) -> Dict[str, Any]:
         return {

@@ -171,8 +171,10 @@ def test_real_flight_data_loading_and_packing():
     # Pack to real X-Plane UDP packet
     udp_packet = pack_real_row_to_xplane_udp(first_row)
     assert udp_packet.startswith(XPLANE_DATA_HEADER)
-    # Verify packet length: 5 header + 22 channels * 36 bytes = 797 bytes
-    assert len(udp_packet) == 5 + 22 * 36
+    # Only rows that carry recorded values are transmitted (no invented autopilot/nav/baro rows)
+    channels, err = parse_xplane_datagram(udp_packet)
+    assert err is None
+    assert set(channels) == {1, 3, 4, 8, 13, 14, 17, 18, 20, 25, 37, 45, 47, 49, 50, 62}
 
     # Ingest into parser
     parser = TelemetryParser()
@@ -189,6 +191,56 @@ def test_real_flight_data_loading_and_packing():
     assert snapshot.speeds.indicated_airspeed_mph is None
     assert snapshot.engine.rpm == pytest.approx(205.5, rel=1e-2)
     assert snapshot.dynamics.mach_number is None
+    # Recording holds no autopilot, navigation or altimeter-setting data: they must stay null
+    assert snapshot.autopilot.ap_engaged is None
+    assert snapshot.autopilot.target_altitude_ft is None
+    assert snapshot.autopilot.target_speed_kt is None
+    assert snapshot.autopilot.nav_distance_nm is None
+    assert snapshot.autopilot.nav_id is None
+    assert snapshot.position.barometer_setting_inhg is None
+    assert snapshot.flight_times.frame_rate_fps is None
+    assert snapshot.flight_times.total_time_sec == pytest.approx(first_row["total_time"], rel=1e-4)
+
+
+def test_replay_temperatures_are_converted_to_celsius():
+    """Recorded EGT / oil temperature are deg F (as X-Plane writes them); the snapshot reports deg C."""
+    replayer = FlightDataReplayer()
+    replayer.load_data()
+    row = next(r for r in replayer._records if r.get("egt_f") and r["egt_f"] > 900)
+    parser = TelemetryParser()
+    snapshot, err = parser.process_packet(pack_real_row_to_xplane_udp(row))
+    assert err is None
+    assert snapshot.engine.egt_degc == pytest.approx((row["egt_f"] - 32) * 5 / 9, abs=0.1)
+    assert snapshot.engine.oil_temp_degc == pytest.approx((row["oil_temp_f"] - 32) * 5 / 9, abs=0.1)
+    assert 400 < snapshot.engine.egt_degc < 700
+    assert 50 < snapshot.engine.oil_temp_degc < 120
+
+
+def test_native_xplane11_row4_layout():
+    """Live X-Plane 11 row 4 = mach, blank, VVI, blank, G normal, G axial, G side."""
+    ch4 = struct.pack("<i8f", 4, 0.15, -999.0, -650.0, -999.0, 1.02, 0.05, -0.01, -999.0)
+    parser = TelemetryParser()
+    snapshot, err = parser.process_packet(XPLANE_DATA_HEADER + ch4)
+    assert err is None
+    assert snapshot.dynamics.vertical_speed_fpm == pytest.approx(-650.0)
+    assert snapshot.dynamics.g_load_normal == pytest.approx(1.02)
+    assert snapshot.dynamics.g_load_axial == pytest.approx(0.05)
+    assert snapshot.dynamics.g_load_side == pytest.approx(-0.01)
+
+
+def test_replay_rejects_path_outside_recording_dirs():
+    with TestClient(app) as client:
+        resp = client.post("/replay/start", json={"file_path": "../../../../etc/passwd"})
+        assert resp.status_code == 400
+        resp = client.post("/replay/start", json={"file_path": "../../secret/nothing.csv"})
+        assert resp.status_code == 404
+
+
+def test_websocket_stream_excludes_raw_channels():
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/telemetry") as websocket:
+            data = websocket.receive_json()
+            assert "raw_channels" not in data
 
 
 def test_replay_progress():

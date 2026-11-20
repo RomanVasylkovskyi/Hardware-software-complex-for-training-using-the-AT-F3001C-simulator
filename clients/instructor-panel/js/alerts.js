@@ -15,16 +15,16 @@ class AlertsAndScoringManager {
     this.locIndicator = document.getElementById('ils-loc-dots');
 
     // State
-    this.scoringEnabled = false; // ТИМЧАСОВО ВІДКЛЮЧЕНО ОЦІНЮВАННЯ НА ПРОХАННЯ КОРИСТУВАЧА
+    // Landing report is shown once per touchdown detected by analytics-service.
+    this.scoringEnabled = true;
     this.toasts = new Map(); // warningKey -> DOM toast element
     this.dismissedWarnings = new Set();
     this.activeWarnings = new Set();
     this.normalToast = null;
-    this.lastTouchdownState = false;
     this.landingReportData = null;
-    this.wasAirborne = false;
+    // Touchdown already reported (or present when the panel connected); undefined = not yet known.
+    this.lastTouchdownId = undefined;
 
-    // Примусово закриваємо модалку оцінювання
     if (this.reportCardModal) {
       this.reportCardModal.classList.add('hidden');
     }
@@ -159,7 +159,7 @@ class AlertsAndScoringManager {
     }
     // Strict DOM safeguard: remove any leftover DOM elements matching this alert key
     if (this.toastContainer) {
-      const stray = this.toastContainer.querySelectorAll(`.hud-alert-toast[data-alert-key="${key}"]`);
+      const stray = this.toastContainer.querySelectorAll(`.hud-alert-toast[data-alert-key="${CSS.escape(key)}"]`);
       stray.forEach(el => el.remove());
     }
   }
@@ -168,8 +168,7 @@ class AlertsAndScoringManager {
     if (!isOnline) {
       this.showOfflineState();
       if (this.approachBadge) {
-        this.approachBadge.className = 'status-pill status-offline';
-        this.approachBadge.innerText = 'APPROACH: nodata';
+        this.approachBadge.className = 'status-pill hdr-approach hidden';
       }
       if (this.gsIndicator) this.gsIndicator.innerHTML = '<div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div>';
       if (this.locIndicator) this.locIndicator.innerHTML = '<div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div><div class="ils-dot"></div>';
@@ -189,10 +188,10 @@ class AlertsAndScoringManager {
     this.renderWarnings(combinedAlerts);
 
     // 2. Process Stabilized Approach Status
-    this.updateStabilizedApproach(analytics, telemetry);
+    this.updateStabilizedApproach(analytics);
 
-    // 3. Process Landing Evaluation / Touchdown
-    this.evaluateTouchdown(analytics, telemetry);
+    // 3. Landing report for a touchdown detected by analytics-service
+    this.evaluateTouchdown(analytics);
   }
 
   renderWarnings(warningsList) {
@@ -269,8 +268,8 @@ class AlertsAndScoringManager {
         }
         toastData.lastSeen = now;
         const badge = toastData.el?.querySelector('.warn-badge');
-        if (badge && badge.innerText !== norm.label) {
-          badge.innerText = norm.label;
+        if (badge && badge.textContent !== norm.label) {
+          badge.textContent = norm.label;
         }
 
         // Ensure DOM element is still attached to toastContainer
@@ -279,7 +278,7 @@ class AlertsAndScoringManager {
         }
       } else {
         // Double-check DOM: does an element with this key ALREADY exist in toastContainer?
-        let existingEl = this.toastContainer?.querySelector(`.hud-alert-toast[data-alert-key="${key}"]`);
+        let existingEl = this.toastContainer?.querySelector(`.hud-alert-toast[data-alert-key="${CSS.escape(key)}"]`);
         
         if (existingEl) {
           // Re-link existing element into map to prevent orphan accumulation
@@ -299,16 +298,22 @@ class AlertsAndScoringManager {
           const cardType = norm.isRed ? 'master-warning' : 'master-caution';
           const cssClass = norm.isRed ? 'warn-badge-red' : 'warn-badge-amber';
 
+          // Alert text can originate from network input (e.g. a malformed UDP packet's
+          // header ends up in telemetry status.errors): build nodes, never innerHTML.
           const toast = document.createElement('div');
           toast.className = `hud-alert-toast ${cardType} toast-entering`;
           toast.setAttribute('role', 'alert');
           toast.dataset.alertKey = key;
-          toast.innerHTML = `
-            <span class="warn-badge ${cssClass}">${norm.label}</span>
-            <button class="hud-alert-close" title="Сховати">&times;</button>
-          `;
+          const badgeEl = document.createElement('span');
+          badgeEl.className = `warn-badge ${cssClass}`;
+          badgeEl.textContent = norm.label;
+          badgeEl.title = norm.label;
+          const closeBtn = document.createElement('button');
+          closeBtn.className = 'hud-alert-close';
+          closeBtn.title = 'Сховати';
+          closeBtn.textContent = '\u00d7';
+          toast.append(badgeEl, closeBtn);
 
-          const closeBtn = toast.querySelector('.hud-alert-close');
           closeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             this.dismissToast(key);
@@ -394,44 +399,32 @@ class AlertsAndScoringManager {
     this.showOfflineState();
   }
 
-  updateStabilizedApproach(analytics, telemetry) {
+  updateStabilizedApproach(analytics) {
     if (!this.approachBadge) return;
 
-    const status = analytics?.stabilized_approach?.status || analytics?.approach_status;
-    if (status === 'STABILIZED' || status === 'STABLE') {
-      this.approachBadge.className = 'status-pill status-online';
-      this.approachBadge.innerText = 'APPROACH: STABILIZED';
-    } else if (status === 'UNSTABILIZED' || status === 'UNSTABLE' || status === 'GO_AROUND_MANDATORY') {
-      this.approachBadge.className = 'status-pill status-error blink';
-      this.approachBadge.innerText = 'APPROACH: UNSTABILIZED';
+    const status = analytics?.stabilized_approach?.status;
+    const badge = this.approachBadge;
+    const show = (text, cls) => {
+      badge.className = `status-pill hdr-approach ${cls}`;
+      badge.textContent = text;
+    };
+
+    if (status === 'STABILIZED') {
+      show('APR: STABLE', 'status-online');
+    } else if (status === 'UNSTABILIZED') {
+      const failed = analytics.stabilized_approach.failed_rules || [];
+      show('APR: UNSTABLE', 'status-error blink');
+      badge.title = failed.length ? `Порушено: ${failed.join(', ')}` : 'Захід нестабілізований';
+      return;
     } else if (status === 'MONITORING') {
-      this.approachBadge.className = 'status-pill status-caution';
-      this.approachBadge.innerText = 'APPROACH: MONITORING';
-    } else if (status === 'UNABLE_TO_EVALUATE_MISSING_DATA' || status === 'NO_DATA') {
-      this.approachBadge.className = 'status-pill status-offline';
-      this.approachBadge.innerText = 'APPROACH: nodata';
+      show('APR: ABOVE GATE', 'status-caution');
+    } else if (status === 'UNABLE_TO_EVALUATE_MISSING_DATA') {
+      show('APR: nodata', 'status-offline');
     } else {
-      // Check AGL altitude to determine approach phase
-      const agl = telemetry?.altitude_agl_ft;
-      if (agl !== null && agl !== undefined && agl > 10 && agl < 1000) {
-        this.approachBadge.className = 'status-pill status-caution';
-        this.approachBadge.innerText = 'APPROACH: MONITORING';
-      } else {
-        this.approachBadge.className = 'status-pill status-offline';
-        this.approachBadge.innerText = 'APPROACH: nodata';
-      }
+      // NOT_ON_APPROACH, analytics offline or unknown: nothing to report
+      badge.className = 'status-pill hdr-approach hidden';
     }
-
-    // ILS Deviation needles if available
-    const gsDev = analytics?.deviation?.glideslope_dots;
-    const locDev = analytics?.deviation?.localizer_dots;
-
-    if (this.gsIndicator && gsDev !== undefined && gsDev !== null) {
-      this.renderDeviationDots(this.gsIndicator, gsDev, 'vertical');
-    }
-    if (this.locIndicator && locDev !== undefined && locDev !== null) {
-      this.renderDeviationDots(this.locIndicator, locDev, 'horizontal');
-    }
+    badge.title = 'Стабілізований захід (ICAO Doc 8168 / FAA AC 120-108)';
   }
 
   renderDeviationDots(container, dev, orientation) {
@@ -452,102 +445,53 @@ class AlertsAndScoringManager {
     }
   }
 
-  evaluateTouchdown(analytics, telemetry) {
+  evaluateTouchdown(analytics) {
     if (!this.scoringEnabled) return;
-    if (!telemetry) return;
+    const result = analytics?.landing_score;
+    if (!result || !result.status) return;
 
-    // Direct report from analytics service
-    if (analytics?.landing_score && !this.landingReportData) {
-      this.showLandingReport(analytics.landing_score);
+    const touchdownId = result.status === 'TOUCHDOWN_EVALUATED'
+      ? (result.touchdown_id ?? result.touchdown_time_sec ?? null)
+      : null;
+
+    // First analytics frame after (re)connecting: remember what is already there so an
+    // old landing is not announced as a new one.
+    if (this.lastTouchdownId === undefined) {
+      this.lastTouchdownId = touchdownId;
       return;
     }
+    if (touchdownId === null || touchdownId === this.lastTouchdownId) return;
 
-    // Local touchdown detection fallback based on on_runway and AGL transition
-    const agl = telemetry.altitude_agl_ft;
-    const onRunway = telemetry.on_runway === 1 || (agl !== null && agl <= 2.0 && telemetry.indicated_airspeed_kt < 75);
-
-    if (agl > 40) {
-      this.wasAirborne = true;
-    }
-
-    // Touchdown event trigger
-    if (this.wasAirborne && onRunway && !this.lastTouchdownState) {
-      const vs = telemetry.vertical_speed_fpm ?? 0;
-      const gNorm = telemetry.g_load_normal ?? 1.0;
-      const pitch = telemetry.pitch_deg ?? 0;
-
-      const report = this.calculateLandingScore(vs, gNorm, pitch);
-      this.showLandingReport(report);
-      this.wasAirborne = false;
-    }
-
-    this.lastTouchdownState = onRunway;
+    this.lastTouchdownId = touchdownId;
+    this.showLandingReport(result);
   }
 
-  calculateLandingScore(vs, gLoad, pitch) {
-    // VS criteria: soft: -50 to -180 fpm (40 pts)
-    let vsScore = 40;
-    const absVS = Math.abs(vs);
-    if (absVS > 600) vsScore = 0;
-    else if (absVS > 400) vsScore = 15;
-    else if (absVS > 250) vsScore = 28;
-    else if (absVS > 180) vsScore = 35;
-
-    // G-load criteria: 1.0 - 1.3 G (30 pts)
-    let gScore = 30;
-    if (gLoad > 2.2 || gLoad < 0.5) gScore = 0;
-    else if (gLoad > 1.7) gScore = 12;
-    else if (gLoad > 1.4) gScore = 22;
-
-    // Pitch flare criteria: +5 to +8 deg (30 pts)
-    let pitchScore = 30;
-    if (pitch < 0 || pitch > 12) pitchScore = 5;
-    else if (pitch < 3 || pitch > 9) pitchScore = 18;
-
-    const total = vsScore + gScore + pitchScore;
-    let grade = 'GOOD';
-    let gradeColor = '#22c55e';
-
-    if (total >= 90) {
-      grade = 'EXCELLENT (GREASER)';
-      gradeColor = '#00e5ff';
-    } else if (total >= 75) {
-      grade = 'GOOD';
-      gradeColor = '#22c55e';
-    } else if (total >= 60) {
-      grade = 'ACCEPTABLE';
-      gradeColor = '#eab308';
-    } else if (absVS > 550 || gLoad > 2.0) {
-      grade = 'CRASH / STRUCTURAL DAMAGE';
-      gradeColor = '#ef4444';
-    } else {
-      grade = 'HARD LANDING';
-      gradeColor = '#f97316';
-    }
-
-    return {
-      score: total,
-      grade: grade,
-      gradeColor: gradeColor,
-      touchdown_vs_fpm: vs,
-      touchdown_g: gLoad,
-      touchdown_pitch_deg: pitch,
-      centerline_dev_m: 1.4, // nominal
-    };
-  }
-
-  showLandingReport(report) {
+  showLandingReport(result) {
     if (!this.scoringEnabled) return;
-    this.landingReportData = report;
+    this.landingReportData = result;
     if (!this.reportCardModal) return;
 
-    document.getElementById('rpt-score-val').innerText = `${report.score} / 100`;
-    document.getElementById('rpt-grade-val').innerText = report.grade;
-    document.getElementById('rpt-grade-val').style.color = report.gradeColor || '#22c55e';
+    const breakdown = result.breakdown || {};
+    const fmt = (value, digits, unit) =>
+      (typeof value === 'number' && Number.isFinite(value)) ? `${value.toFixed(digits)} ${unit}` : 'nodata';
+    const setText = (id, text) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    };
 
-    document.getElementById('rpt-vs-val').innerText = `${Math.round(report.touchdown_vs_fpm)} FPM`;
-    document.getElementById('rpt-g-val').innerText = `${report.touchdown_g.toFixed(2)} G`;
-    document.getElementById('rpt-pitch-val').innerText = `${report.touchdown_pitch_deg.toFixed(1)}°`;
+    const score = result.landing_score;
+    const scoreColor = score >= 80 ? '#22c55e' : (score >= 65 ? '#eab308' : '#ef4444');
+    setText('rpt-score-val', typeof score === 'number' ? `${score.toFixed(1)} / 100` : 'nodata');
+    setText('rpt-grade-val', result.rating || '');
+    const scoreEl = document.getElementById('rpt-score-val');
+    if (scoreEl) scoreEl.style.color = scoreColor;
+
+    setText('rpt-vs-val', fmt(breakdown.vertical_speed?.touchdown_vsi_fpm, 0, 'FPM'));
+    setText('rpt-g-val', fmt(breakdown.vertical_g_force?.touchdown_g_load, 2, 'G'));
+    setText('rpt-cl-val', fmt(breakdown.centerline_offset?.centerline_offset_m, 1, 'м'));
+    setText('rpt-roll-val', fmt(breakdown.roll_angle?.roll_at_touchdown_deg, 1, '°'));
+    const t = result.touchdown_time_sec;
+    setText('rpt-meta-val', typeof t === 'number' ? `Торкання на t=${t.toFixed(1)} с запису` : '');
 
     this.reportCardModal.classList.remove('hidden');
 
@@ -564,7 +508,6 @@ class AlertsAndScoringManager {
 
   resetLandingReport() {
     this.landingReportData = null;
-    this.wasAirborne = false;
     this.closeLandingReport();
   }
 }

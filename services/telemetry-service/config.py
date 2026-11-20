@@ -37,8 +37,13 @@ class Settings(BaseSettings):
     simulator_offline_timeout_sec: float = 3.0
     expected_packet_interval_sec: float = 0.05  # ~20 Hz nominal rate
 
-    # WebSocket streaming rate
-    ws_broadcast_rate_hz: float = 20.0
+    # WebSocket streaming: snapshots are pushed on packet arrival, capped at this rate,
+    # with a heartbeat snapshot at least every ws_heartbeat_interval_sec.
+    ws_broadcast_rate_hz: float = 50.0
+    ws_heartbeat_interval_sec: float = 0.25
+
+    # Destination ident reported with GPS guidance data
+    airport_icao: str = "UKLL"
 
     model_config = SettingsConfigDict(
         env_prefix="TELEM_",

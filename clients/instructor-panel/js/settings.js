@@ -6,6 +6,50 @@
  * 3. Local Flight File Upload from Instructor's PC (.csv / .txt)
  */
 
+const INSTRUCTOR_TOKEN_KEY = 'atf3001c.instructorToken';
+
+function readInstructorToken() {
+  try {
+    return window.localStorage.getItem(INSTRUCTOR_TOKEN_KEY) || '';
+  } catch (e) {
+    console.warn('[Settings] localStorage unavailable:', e);
+    return '';
+  }
+}
+
+function storeInstructorToken(token) {
+  try {
+    if (token) window.localStorage.setItem(INSTRUCTOR_TOKEN_KEY, token);
+    else window.localStorage.removeItem(INSTRUCTOR_TOKEN_KEY);
+  } catch (e) {
+    console.warn('[Settings] localStorage unavailable:', e);
+  }
+}
+
+/**
+ * fetch() for control endpoints (replay / live mode / upload). Sends the instructor token;
+ * on 401 asks for it once, stores it in this browser and retries.
+ */
+async function controlFetch(url, options = {}) {
+  const send = () => {
+    const headers = new Headers(options.headers || {});
+    const token = readInstructorToken();
+    if (token) headers.set('X-Instructor-Token', token);
+    return fetch(url, { ...options, headers });
+  };
+
+  let res = await send();
+  if (res.status === 401) {
+    storeInstructorToken('');
+    const entered = window.prompt('Введіть токен інструктора (INSTRUCTOR_TOKEN):');
+    if (!entered) return res;
+    storeInstructorToken(entered.trim());
+    res = await send();
+    if (res.status === 401) storeInstructorToken('');
+  }
+  return res;
+}
+
 class TelemetrySettingsManager {
   constructor() {
     this.cardEl = document.getElementById('card-settings');
@@ -266,7 +310,7 @@ class TelemetrySettingsManager {
     try {
       select.innerHTML = '<option value="">Оновлення списку файлів...</option>';
       const res = await fetch('/api/replay/files');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(res.status === 401 ? 'Потрібен токен інструктора' : `HTTP ${res.status}`);
       const data = await res.json();
 
       this.availableServerFiles = data.files || [];
@@ -300,10 +344,21 @@ class TelemetrySettingsManager {
 
     const file = this.availableServerFiles.find(f => f.filename === filename);
     if (file) {
-      detailsEl.innerHTML = `
-        <div class="meta-item"><strong>Опис:</strong> ${file.description || file.filename}</div>
-        <div class="meta-item"><strong>Розмір:</strong> ${file.size_formatted} | <strong>Тип:</strong> ${file.type.toUpperCase()}</div>
-      `;
+      const row = (pairs) => {
+        const div = document.createElement('div');
+        div.className = 'meta-item';
+        pairs.forEach(([label, value], i) => {
+          if (i > 0) div.append(' | ');
+          const strong = document.createElement('strong');
+          strong.textContent = `${label}:`;
+          div.append(strong, ` ${value}`);
+        });
+        return div;
+      };
+      detailsEl.replaceChildren(
+        row([['Опис', file.description || file.filename]]),
+        row([['Розмір', file.size_formatted], ['Тип', String(file.type || '').toUpperCase()]]),
+      );
     } else {
       detailsEl.innerHTML = '';
     }
@@ -601,8 +656,8 @@ class TelemetrySettingsManager {
 
   async activateLiveMode() {
     try {
-      const res = await fetch('/api/mode/live', { method: 'POST' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const res = await controlFetch('/api/mode/live', { method: 'POST' });
+      if (!res.ok) throw new Error(res.status === 401 ? 'Потрібен токен інструктора' : `HTTP ${res.status}`);
       const data = await res.json();
 
       this.currentMode = 'live';
@@ -613,7 +668,7 @@ class TelemetrySettingsManager {
       this.fetchReplayStatus();
     } catch (e) {
       console.error('[Settings] Error switching to live mode:', e);
-      this.showToast('Помилка перемикання в онлайн режим', 'error');
+      this.showToast(`Помилка перемикання в онлайн режим: ${e.message}`, 'error');
     }
   }
 
@@ -631,7 +686,7 @@ class TelemetrySettingsManager {
 
     try {
       this.currentReplaySource = 'server';
-      const res = await fetch('/api/replay/start', {
+      const res = await controlFetch('/api/replay/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -642,7 +697,7 @@ class TelemetrySettingsManager {
         }),
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(res.status === 401 ? 'Потрібен токен інструктора' : `HTTP ${res.status}`);
       const data = await res.json();
 
       this.isReplayRunning = true;
@@ -651,7 +706,7 @@ class TelemetrySettingsManager {
       this.fetchReplayStatus();
     } catch (e) {
       console.error('[Settings] Error starting server replay:', e);
-      this.showToast('Не вдалося запустити реплей з сервера', 'error');
+      this.showToast(`Не вдалося запустити реплей з сервера: ${e.message}`, 'error');
       this.currentReplaySource = null;
       this.updateControlsState();
     }
@@ -659,8 +714,8 @@ class TelemetrySettingsManager {
 
   async stopReplay() {
     try {
-      const res = await fetch('/api/replay/stop', { method: 'POST' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const res = await controlFetch('/api/replay/stop', { method: 'POST' });
+      if (!res.ok) throw new Error(res.status === 401 ? 'Потрібен токен інструктора' : `HTTP ${res.status}`);
       this.isReplayRunning = false;
       this.currentReplaySource = null;
       this.currentMode = 'live';
@@ -669,7 +724,7 @@ class TelemetrySettingsManager {
       this.fetchReplayStatus();
     } catch (e) {
       console.error('[Settings] Error stopping replay:', e);
-      this.showToast('Помилка зупинки реплею', 'error');
+      this.showToast(`Помилка зупинки реплею: ${e.message}`, 'error');
     }
   }
 
@@ -732,12 +787,12 @@ class TelemetrySettingsManager {
       formData.append('speed', this.localSpeed.toString());
       formData.append('loop', this.localLoop ? 'true' : 'false');
 
-      const res = await fetch('/api/replay/upload', {
+      const res = await controlFetch('/api/replay/upload', {
         method: 'POST',
         body: formData,
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(res.status === 401 ? 'Потрібен токен інструктора' : `HTTP ${res.status}`);
       const data = await res.json();
 
       this.isReplayRunning = true;
@@ -747,7 +802,7 @@ class TelemetrySettingsManager {
       this.fetchServerFiles();
     } catch (e) {
       console.error('[Settings] Error uploading local file:', e);
-      this.showToast('Помилка завантаження файлу на сервер', 'error');
+      this.showToast(`Помилка завантаження файлу на сервер: ${e.message}`, 'error');
       this.currentReplaySource = null;
       this.updateControlsState();
     } finally {

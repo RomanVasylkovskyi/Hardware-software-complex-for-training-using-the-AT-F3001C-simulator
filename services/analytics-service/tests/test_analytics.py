@@ -16,10 +16,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from stabilized_approach import StabilizedApproachMonitor
 from landing_score import LandingScoreEvaluator
 
-try:
-    from ai_warnings import FlightWarningsGenerator
-except ImportError:
-    from warnings import FlightWarningsGenerator
+from ai_warnings import FlightWarningsGenerator
+from flight_phase import FlightPhaseTracker, FlightPhase, find_touchdowns
 
 
 class TestStabilizedApproach(unittest.TestCase):
@@ -177,6 +175,85 @@ class TestWarningsGenerator(unittest.TestCase):
         }
         res = self.generator.evaluate_warnings(telemetry)
         self.assertIn("TOO HIGH SPEED", res["active_warnings"])
+
+
+DATA_CSV = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "telemetry_essential.csv"))
+
+
+def _load_rows():
+    with open(DATA_CSV, encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+class TestFlightPhaseAndTouchdown(unittest.TestCase):
+
+    def test_touchdowns_in_recorded_ukll_flight(self):
+        """Two circuits in the recording: contacts at ~113.3 s and ~208.6 s, not at 51.5 s (61 ft over the runway)."""
+        events = find_touchdowns(_load_rows())
+        self.assertEqual(len(events), 2)
+        self.assertAlmostEqual(events[0].time_sec, 113.3, delta=0.5)
+        self.assertAlmostEqual(events[1].time_sec, 208.6, delta=0.5)
+        first = events[0]
+        self.assertLess(float(first.contact_frame["altitude_agl_ft"]), 1.5)
+        self.assertLess(first.min_vsi_fpm, -150.0)
+        self.assertGreater(first.peak_g, 1.5)
+
+    def test_no_touchdown_while_parked_or_on_takeoff_roll(self):
+        tracker = FlightPhaseTracker()
+        for row in _load_rows():
+            state = tracker.update(row)
+            if float(row["time_sec"]) > 60.0:
+                break
+            self.assertIsNone(state.touchdown, f"false touchdown at t={row['time_sec']}")
+
+    def test_replay_restart_resets_state(self):
+        tracker = FlightPhaseTracker()
+        rows = _load_rows()
+        for row in rows:
+            tracker.update(row)
+        self.assertIsNotNone(tracker.last_touchdown)
+        state = tracker.update(rows[0])  # time jumps back to 0
+        self.assertIsNone(state.touchdown)
+        self.assertEqual(state.phase, FlightPhase.GROUND)
+
+
+class TestAnalyticsServer(unittest.TestCase):
+
+    def setUp(self):
+        from fastapi.testclient import TestClient
+        import server
+        self.client = TestClient(server.app)
+
+    def test_stream_does_not_score_or_flag_on_ground(self):
+        rows = _load_rows()
+        with self.client.websocket_connect("/ws/analytics") as ws:
+            for row in rows[:200]:  # parked and taxi, all on the ground
+                ws.send_json(row)
+                res = ws.receive_json()
+                self.assertEqual(res["landing_score"]["status"], "NO_TOUCHDOWN_YET")
+                self.assertEqual(res["stabilized_approach"]["status"], "NOT_ON_APPROACH")
+                self.assertEqual(res["warnings"]["active_warnings"], [])
+
+    def test_stream_reports_touchdown_once_window_closes(self):
+        rows = [r for r in _load_rows() if float(r["time_sec"]) <= 116.0]
+        last = None
+        with self.client.websocket_connect("/ws/analytics") as ws:
+            for row in rows:
+                ws.send_json(row)
+                last = ws.receive_json()
+        self.assertEqual(last["landing_score"]["status"], "TOUCHDOWN_EVALUATED")
+        self.assertEqual(last["landing_score"]["touchdown_id"], 1)
+
+    def test_session_uses_real_touchdowns(self):
+        resp = self.client.post("/analytics/session", json={"csv_file_path": "telemetry_essential.csv"})
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(len(body["touchdowns"]), 2)
+        self.assertIsInstance(body["landing_score"]["touchdown_time_sec"], float)
+
+    def test_session_rejects_path_traversal(self):
+        resp = self.client.post("/analytics/session", json={"csv_file_path": "../../../../etc/passwd"})
+        self.assertEqual(resp.status_code, 400)
 
 
 if __name__ == "__main__":
